@@ -106,15 +106,7 @@ public class AppState
     public List<DownloadItem> Items { get; set; } = new();
     public List<Subscription> Subscriptions { get; set; } = new();
 
-    public static string DataDir
-    {
-        get
-        {
-            var d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClipHarbor");
-            Directory.CreateDirectory(d);
-            return d;
-        }
-    }
+    public static string DataDir => Platform.DataDir;
 
     static string FilePath => Path.Combine(DataDir, "state.json");
 
@@ -124,12 +116,7 @@ public class AppState
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static string DefaultFolder()
-    {
-        var videos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
-        if (string.IsNullOrEmpty(videos)) videos = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(videos, "ClipHarbor");
-    }
+    public static string DefaultFolder() => Path.Combine(Platform.VideosDir(), "ClipHarbor");
 
     public static AppState Load()
     {

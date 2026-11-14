@@ -2,13 +2,22 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, avalonia-port]
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,     name: windows-x64 }
+          - { os: ubuntu-latest,  rid: linux-x64,   name: linux-x64 }
+          - { os: ubuntu-latest,  rid: linux-arm64, name: linux-arm64 }
+          - { os: macos-latest,   rid: osx-arm64,   name: macos-apple-silicon }
+          - { os: macos-latest,   rid: osx-x64,     name: macos-intel }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -16,13 +25,73 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Build
-        run: dotnet build -c Release --nologo
-
       - name: Publish (self-contained, single file)
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish --nologo
+        run: dotnet publish -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish --nologo
+
+      - name: Package for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item publish/ClipHarbor.exe dist/
+
+      - name: Package for Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist ClipHarbor
+          cp publish/ClipHarbor README.md LICENSE ClipHarbor/
+          chmod +x ClipHarbor/ClipHarbor
+          tar -czf dist/ClipHarbor-${{ matrix.name }}.tar.gz ClipHarbor
+
+      - name: Package for macOS (.app)
+        if: runner.os == 'macOS'
+        run: |
+          APP=ClipHarbor.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist icon.iconset
+          cp publish/ClipHarbor "$APP/Contents/MacOS/"
+          chmod +x "$APP/Contents/MacOS/ClipHarbor"
+          cp packaging/macos/Info.plist "$APP/Contents/"
+          for s in 16 32 128 256 512; do
+            sips -z $s $s assets/ClipHarbor.png --out icon.iconset/icon_${s}x${s}.png >/dev/null
+            sips -z $((s*2)) $((s*2)) assets/ClipHarbor.png --out icon.iconset/icon_${s}x${s}@2x.png >/dev/null
+          done
+          iconutil -c icns icon.iconset -o "$APP/Contents/Resources/ClipHarbor.icns"
+          codesign --force --deep -s - "$APP"
+          ditto -c -k --keepParent "$APP" dist/ClipHarbor-${{ matrix.name }}.zip
+
+      # Screenshot check: start the app, draw a picture of the window, and make sure it worked.
+      - name: Screenshot check (Windows)
+        continue-on-error: true
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process publish/ClipHarbor.exe -ArgumentList '--screenshot','shot.png' -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'App did not finish' }
+          if (-not (Test-Path shot.png)) { throw 'No screenshot' }
+
+      - name: Screenshot check (Linux)
+        continue-on-error: true
+        if: matrix.rid == 'linux-x64'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libice6 libsm6 libfontconfig1 >/dev/null
+          timeout 60 xvfb-run -a ./publish/ClipHarbor --screenshot shot.png
+          test -s shot.png
+
+      - name: Screenshot check (macOS)
+        continue-on-error: true
+        if: matrix.rid == 'osx-arm64'
+        run: |
+          perl -e 'alarm 60; exec @ARGV' ./ClipHarbor.app/Contents/MacOS/ClipHarbor --screenshot shot.png
+          test -s shot.png
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshot-${{ matrix.name }}
+          path: shot.png
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ClipHarbor-win-x64
-          path: publish/
+          name: ClipHarbor-${{ matrix.name }}
+          path: dist/

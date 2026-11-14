@@ -1,88 +1,79 @@
-using System.Drawing.Drawing2D;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace ClipHarbor;
 
 public class NavItem
 {
-    public string Key = "", Text = "", Glyph = "";
-    public int Count = -1;
+    public string Key = "", Text = "";
+    public Geometry? Glyph;
     public bool Header;
+    internal Border? View;
+    internal Border? Pill;
+    internal TextBlock? CountText;
 }
 
 /// <summary>Left sidebar with sections.</summary>
-public class NavBar : Control
+public class NavBar : Border
 {
     public readonly List<NavItem> Items = new();
     public string SelectedKey = "all";
     public event Action<string>? Selected;
-    public string Footer = "";
-    int _hover = -1;
-    float S => DeviceDpi / 96f;
-    int ItemH => (int)(36 * S);
+    readonly StackPanel _stack = new() { Margin = new Thickness(0, 10, 0, 0) };
+    readonly TextBlock _footer = new() { Classes = { "sub", "small" }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(20, 0, 16, 14) };
 
     public NavBar()
     {
-        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        Classes.Add("sidebar");
+        Width = 220;
+        var dock = new DockPanel();
+        DockPanel.SetDock(_footer, Dock.Bottom);
+        dock.Children.Add(_footer);
+        dock.Children.Add(new ScrollViewer { Content = _stack, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        Child = dock;
     }
 
-    Rectangle ItemRect(int i)
-    {
-        int y = (int)(12 * S);
-        for (int k = 0; k < i; k++) y += Items[k].Header ? (int)(34 * S) : ItemH;
-        return new Rectangle((int)(10 * S), y, Width - (int)(20 * S), Items[i].Header ? (int)(34 * S) : ItemH - (int)(2 * S));
-    }
+    public string Footer { set => _footer.Text = value; }
 
-    int HitIndex(Point p)
+    public void Build()
     {
-        for (int i = 0; i < Items.Count; i++) if (!Items[i].Header && ItemRect(i).Contains(p)) return i;
-        return -1;
-    }
-
-    protected override void OnMouseMove(MouseEventArgs e)
-    {
-        int h = HitIndex(e.Location);
-        if (h != _hover) { _hover = h; Cursor = h >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); }
-    }
-    protected override void OnMouseLeave(EventArgs e) { _hover = -1; Invalidate(); }
-    protected override void OnMouseDown(MouseEventArgs e)
-    {
-        int h = HitIndex(e.Location);
-        if (h >= 0) { SelectedKey = Items[h].Key; Invalidate(); Selected?.Invoke(SelectedKey); }
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        var g = e.Graphics; float s = S;
-        g.Clear(Theme.Sidebar);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        for (int i = 0; i < Items.Count; i++)
+        _stack.Children.Clear();
+        foreach (var it in Items)
         {
-            var it = Items[i]; var r = ItemRect(i);
             if (it.Header)
             {
-                TextRenderer.DrawText(g, it.Text.ToUpperInvariant(), Theme.Small, new Rectangle(r.X + (int)(10 * s), r.Y + (int)(10 * s), r.Width, r.Height - (int)(10 * s)), Theme.SubText, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                _stack.Children.Add(new TextBlock { Text = it.Text.ToUpperInvariant(), Classes = { "sub", "small" }, Margin = new Thickness(20, 14, 0, 6) });
                 continue;
             }
-            bool sel = it.Key == SelectedKey;
-            if (sel) Theme.FillRound(g, Theme.Dark ? Theme.Hover : Theme.Surface, r, 7 * s);
-            else if (i == _hover) Theme.FillRound(g, Theme.Dark ? Color.FromArgb(0x22, 0x25, 0x2B) : Color.FromArgb(0xE2, 0xE5, 0xEB), r, 7 * s);
-            if (sel) Theme.FillRound(g, Theme.Accent, new RectangleF(r.X, r.Y + r.Height * 0.25f, 3 * s, r.Height * 0.5f), 1.5f * s);
-            var col = sel ? Theme.Accent : Theme.SubText;
-            TextRenderer.DrawText(g, it.Glyph, Theme.Icon, new Rectangle(r.X + (int)(10 * s), r.Y, (int)(22 * s), r.Height), col, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
-            TextRenderer.DrawText(g, it.Text, sel ? Theme.Bold : Theme.Base, new Rectangle(r.X + (int)(40 * s), r.Y, r.Width - (int)(80 * s), r.Height), sel ? Theme.Text : Theme.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-            if (it.Count > 0)
-            {
-                var c = it.Count.ToString();
-                var sz = TextRenderer.MeasureText(c, Theme.Small);
-                var pill = new RectangleF(r.Right - sz.Width - 18 * s, r.Y + (r.Height - 18 * s) / 2, sz.Width + 8 * s, 18 * s);
-                Theme.FillRound(g, sel ? Theme.Mix(Theme.Accent, Theme.Surface, .82) : (Theme.Dark ? Theme.Border : Theme.Track), pill, 9 * s);
-                TextRenderer.DrawText(g, c, Theme.Small, Rectangle.Round(pill), sel ? Theme.Accent : Theme.SubText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            }
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto") };
+            var mark = new Border { Classes = { "navmark" }, Width = 3, Height = 17, VerticalAlignment = VerticalAlignment.Center };
+            var icon = new Icon(it.Glyph!, 17) { Margin = new Thickness(7, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+            var label = new TextBlock { Text = it.Text, Classes = { "label" }, VerticalAlignment = VerticalAlignment.Center };
+            it.CountText = new TextBlock { FontSize = 11 };
+            it.Pill = new Border { Classes = { "pill" }, Child = it.CountText, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), IsVisible = false };
+            Grid.SetColumn(icon, 1); Grid.SetColumn(label, 2); Grid.SetColumn(it.Pill, 3);
+            grid.Children.AddRange(new Control[] { mark, icon, label, it.Pill });
+            var b = new Border { Classes = { "nav" }, Child = grid };
+            var key = it.Key;
+            b.PointerPressed += (_, _) => { SelectedKey = key; Refresh(); Selected?.Invoke(key); };
+            it.View = b;
+            _stack.Children.Add(b);
         }
-        if (Footer.Length > 0)
-        {
-            var fr = new Rectangle((int)(20 * s), Height - (int)(64 * s), Width - (int)(36 * s), (int)(52 * s));
-            TextRenderer.DrawText(g, Footer, Theme.Small, fr, Theme.SubText, TextFormatFlags.Left | TextFormatFlags.Bottom | TextFormatFlags.WordBreak);
-        }
+        Refresh();
+    }
+
+    public void SetCount(string key, int count)
+    {
+        var it = Items.FirstOrDefault(i => i.Key == key);
+        if (it?.Pill == null) return;
+        it.Pill.IsVisible = count > 0;
+        it.CountText!.Text = count.ToString();
+    }
+
+    public void Refresh()
+    {
+        foreach (var it in Items) it.View?.Classes.Set("selected", it.Key == SelectedKey);
     }
 }

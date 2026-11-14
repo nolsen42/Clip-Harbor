@@ -1,196 +1,239 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+
 namespace ClipHarbor;
 
 /// <summary>Choose what and how to download. Also used (without a link) to set Smart Mode / subscription choices.</summary>
-public class OptionsDialog : Form
+public class OptionsDialog : Dialog
 {
     readonly LinkInfo? _info;
     public DownloadOptions Result;
     public List<PlaylistEntry> ChosenEntries = new();
 
-    readonly RadioButton _video = new() { Text = "Video", AutoSize = true, Checked = true };
-    readonly RadioButton _audio = new() { Text = "Audio only", AutoSize = true };
-    readonly ComboBox _format = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
-    readonly ComboBox _quality = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
-    readonly Label _qualityLabel = new() { Text = "Quality", AutoSize = true };
-    readonly CheckBox _subs = new() { Text = "Download subtitles", AutoSize = true };
-    readonly CheckBox _embed = new() { Text = "Put them inside the video", AutoSize = true, Checked = true };
-    readonly CheckedListBox _subLangs = new() { CheckOnClick = true, Height = 92, Width = 270, IntegralHeight = false };
-    readonly TextBox _subText = new() { Width = 270, PlaceholderText = "Languages, e.g. en, es, fr" };
-    readonly TextBox _folder = new() { Width = 420 };
-    readonly CheckBox _subfolder = new() { Text = "Put playlist videos in their own folder", AutoSize = true, Checked = true };
-    readonly CheckedListBox _entries = new() { CheckOnClick = true, IntegralHeight = false };
+    readonly RadioButton _video = new() { Content = "Video", GroupName = "kind", IsChecked = true };
+    readonly RadioButton _audio = new() { Content = "Audio only", GroupName = "kind" };
+    readonly ComboBox _format = new() { Width = 150 };
+    readonly ComboBox _quality = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    readonly TextBlock _qualityLabel = new() { Text = "Quality", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 12, 0) };
+    readonly CheckBox _subs = new() { Content = "Download subtitles" };
+    readonly CheckBox _embed = new() { Content = "Put them inside the video", IsChecked = true };
+    readonly WrapPanel _subLangs = new();
+    readonly List<CheckBox> _langBoxes = new();
+    readonly TextBox _subText = new() { Width = 270, Watermark = "Languages, e.g. en, es, fr" };
+    readonly TextBox _folder = new();
+    readonly CheckBox _subfolder = new() { Content = "Put playlist videos in their own folder", IsChecked = true };
+    readonly ListBox _entries = new() { Height = 170, SelectionMode = SelectionMode.Multiple, Classes = { "compact" }, Background = Avalonia.Media.Brushes.Transparent };
     readonly List<int> _qualityValues = new();
+    bool _useLangList;
 
     static readonly string[] VideoFormats = { "mp4", "mkv", "webm" };
     static readonly string[] AudioFormats = { "mp3", "m4a", "opus", "flac", "wav" };
+    const double W = 600, LabelW = 130;
 
-    public OptionsDialog(LinkInfo? info, DownloadOptions start, string heading)
+    public OptionsDialog(LinkInfo? info, DownloadOptions start, string heading) : base(heading)
     {
         _info = info;
         Result = start.Clone();
-        AutoScaleDimensions = new SizeF(96, 96);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        Text = heading;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterParent;
-        ShowInTaskbar = false;
-        KeyPreview = true;
-        Font = Theme.Base;
-
-        int y = 18, L = 22, W = 600;
         bool playlist = info?.IsPlaylist == true;
+        var root = new StackPanel { Margin = new Thickness(22, 18, 22, 20), Spacing = 14, Width = W };
 
-        // header
-        var header = new HeaderPanel(info, heading) { Location = new Point(L, y), Size = new Size(W, 86) };
-        Controls.Add(header);
-        y += 100;
+        root.Children.Add(Header(info, heading));
 
         if (playlist)
         {
-            _entries.Location = new Point(L, y + 26);
-            _entries.Size = new Size(W, 170);
-            foreach (var e in info!.Entries)
-                _entries.Items.Add(EntryText(e), true);
-            var lbl = new Label { Text = $"Videos in this playlist ({info.Entries.Count})", AutoSize = true, Location = new Point(L, y + 2), Font = Theme.Bold };
-            var all = new LinkLabel { Text = "Select all", AutoSize = true, Location = new Point(L + W - 150, y + 2), LinkColor = Theme.Accent };
-            var none = new LinkLabel { Text = "None", AutoSize = true, Location = new Point(L + W - 60, y + 2), LinkColor = Theme.Accent };
-            all.Click += (_, _) => { for (int i = 0; i < _entries.Items.Count; i++) _entries.SetItemChecked(i, true); };
-            none.Click += (_, _) => { for (int i = 0; i < _entries.Items.Count; i++) _entries.SetItemChecked(i, false); };
-            Controls.AddRange(new Control[] { lbl, all, none, _entries });
-            y += 210;
+            var head = new DockPanel();
+            var all = new Button { Content = "Select all", Classes = { "link" } };
+            var none = new Button { Content = "None", Classes = { "link" } };
+            all.Click += (_, _) => SetAll(true);
+            none.Click += (_, _) => SetAll(false);
+            var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { all, none } };
+            DockPanel.SetDock(links, Dock.Right);
+            head.Children.Add(links);
+            head.Children.Add(Ui.Text($"Videos in this playlist ({info!.Entries.Count})", "bold"));
+            _entries.ItemTemplate = new FuncDataTemplate<PlaylistEntry>((e, _) =>
+            {
+                var cb = new CheckBox { Content = EntryText(e), IsChecked = e.Selected };
+                cb.IsCheckedChanged += (_, _) => e.Selected = cb.IsChecked == true;
+                return cb;
+            }, supportsRecycling: false);
+            _entries.ItemsSource = info.Entries;
+            root.Children.Add(new StackPanel { Spacing = 6, Children = { head, new Border { Classes = { "panel" }, Child = _entries, ClipToBounds = true, CornerRadius = new CornerRadius(6) } } });
         }
 
-        Controls.Add(new Label { Text = "Download as", AutoSize = true, Location = new Point(L, y + 4), Font = Theme.Bold });
-        _video.Location = new Point(L + 130, y + 2);
-        _audio.Location = new Point(L + 220, y + 2);
-        Controls.AddRange(new Control[] { _video, _audio });
-        y += 38;
+        var kind = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18, Children = { _video, _audio } };
+        root.Children.Add(Row("Download as", kind, bold: true));
 
-        Controls.Add(new Label { Text = "Format", AutoSize = true, Location = new Point(L, y + 4) });
-        _format.Location = new Point(L + 130, y);
-        _qualityLabel.Location = new Point(L + 300, y + 4);
-        _quality.Location = new Point(L + 360, y);
-        _quality.Width = W - 360;
-        Controls.AddRange(new Control[] { _format, _qualityLabel, _quality });
-        y += 40;
+        var formatRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
+        Grid.SetColumn(_qualityLabel, 1); Grid.SetColumn(_quality, 2);
+        formatRow.Children.AddRange(new Control[] { _format, _qualityLabel, _quality });
+        root.Children.Add(Row("Format", formatRow));
 
-        _subs.Location = new Point(L, y);
-        _embed.Location = new Point(L + 300, y);
-        Controls.AddRange(new Control[] { _subs, _embed });
-        y += 30;
-        bool listLangs = info != null && !playlist && !info.IsDirectFile && (info.SubtitleLangs.Count + info.AutoSubtitleLangs.Count) > 0;
-        if (listLangs)
+        var subsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 24, Children = { _subs, _embed } };
+        root.Children.Add(subsRow);
+        _useLangList = info != null && !playlist && !info.IsDirectFile && (info.SubtitleLangs.Count + info.AutoSubtitleLangs.Count) > 0;
+        if (_useLangList)
         {
-            _subLangs.Location = new Point(L + 20, y);
-            _subLangs.Width = W - 20;
-            foreach (var l in info!.SubtitleLangs) _subLangs.Items.Add(l, Result.SubtitleLanguages.Contains(l));
-            foreach (var l in info.AutoSubtitleLangs.Where(l => !info.SubtitleLangs.Contains(l))) _subLangs.Items.Add(l + " (auto)", false);
-            if (_subLangs.CheckedItems.Count == 0 && _subLangs.Items.Count > 0)
+            foreach (var l in info!.SubtitleLangs) AddLang(l, l, Result.SubtitleLanguages.Contains(l));
+            foreach (var l in info.AutoSubtitleLangs.Where(l => !info.SubtitleLangs.Contains(l))) AddLang(l + " (auto)", l, false);
+            if (!_langBoxes.Any(c => c.IsChecked == true) && _langBoxes.Count > 0)
+                (_langBoxes.FirstOrDefault(c => ((string)c.Tag!).StartsWith("en")) ?? _langBoxes[0]).IsChecked = true;
+            root.Children.Add(new Border
             {
-                int en = Enumerable.Range(0, _subLangs.Items.Count).FirstOrDefault(i => _subLangs.Items[i]!.ToString()!.StartsWith("en"), 0);
-                _subLangs.SetItemChecked(en, true);
-            }
-            Controls.Add(_subLangs);
-            y += 100;
+                Classes = { "panel" }, CornerRadius = new CornerRadius(6), Margin = new Thickness(20, -6, 0, 0), Padding = new Thickness(10, 4), MaxHeight = 96,
+                Child = new ScrollViewer { Content = _subLangs },
+            });
         }
         else
         {
-            _subText.Location = new Point(L + 20, y);
             _subText.Text = string.Join(", ", Result.SubtitleLanguages);
-            Controls.Add(_subText);
-            var hint = new Label { Text = info == null || playlist ? "Used whenever the video has them" : "No subtitles were listed for this video", Tag = "sub", AutoSize = true, Location = new Point(L + 300, y + 3) };
-            Controls.Add(hint);
-            y += 36;
+            var hint = Ui.Text(info == null || playlist ? "Used whenever the video has them" : "No subtitles were listed for this video", "sub");
+            root.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(20, -6, 0, 0), Children = { _subText, hint } });
         }
 
-        Controls.Add(new Label { Text = "Save to", AutoSize = true, Location = new Point(L, y + 4), Font = Theme.Bold });
-        _folder.Location = new Point(L + 130, y);
-        _folder.Width = W - 130 - 100;
         _folder.Text = Result.Folder;
-        var browse = new FlatButton { Text = "Browse…", Location = new Point(L + W - 90, y - 3), Size = new Size(90, 30) };
-        browse.Click += (_, _) =>
+        var browse = Ui.Button("Browse…");
+        browse.FontWeight = FontWeight.Normal;
+        browse.Click += async (_, _) =>
         {
-            using var d = new FolderBrowserDialog { SelectedPath = _folder.Text, UseDescriptionForTitle = true, Description = "Choose where downloads are saved" };
-            if (d.ShowDialog(this) == DialogResult.OK) _folder.Text = d.SelectedPath;
+            var start = await TryFolder(_folder.Text);
+            var picked = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose where downloads are saved", SuggestedStartLocation = start });
+            var path = picked.FirstOrDefault()?.TryGetLocalPath();
+            if (path != null) _folder.Text = path;
         };
-        Controls.AddRange(new Control[] { _folder, browse });
-        y += 38;
+        var folderRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(browse, 1); browse.Margin = new Thickness(10, 0, 0, 0);
+        folderRow.Children.AddRange(new Control[] { _folder, browse });
+        root.Children.Add(Row("Save to", folderRow, bold: true));
 
         if (playlist || info == null)
         {
-            _subfolder.Location = new Point(L + 130, y);
-            _subfolder.Checked = Result.PlaylistSubfolder;
-            Controls.Add(_subfolder);
-            y += 32;
+            _subfolder.IsChecked = Result.PlaylistSubfolder;
+            _subfolder.Margin = new Thickness(LabelW, -6, 0, 0);
+            root.Children.Add(_subfolder);
         }
 
-        y += 10;
-        var ok = new FlatButton { Text = info == null ? "Save" : "Download", Primary = true, Glyph = info == null ? "" : "", Size = new Size(140, 36), Location = new Point(L + W - 140, y) };
-        var cancel = new FlatButton { Text = "Cancel", Size = new Size(100, 36), Location = new Point(L + W - 250, y) };
+        var ok = Ui.Button(info == null ? "Save" : "Download", info == null ? Icons.Check : Icons.Download, "accent");
+        var cancel = Ui.Button("Cancel");
+        ok.MinWidth = 140; cancel.MinWidth = 100;
+        ok.HorizontalContentAlignment = cancel.HorizontalContentAlignment = HorizontalAlignment.Center;
         ok.Click += (_, _) => Accept();
-        cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        Controls.AddRange(new Control[] { ok, cancel });
+        cancel.Click += (_, _) => Close(false);
+        var bottom = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var btns = Buttons(cancel, ok);
+        DockPanel.SetDock(btns, Dock.Right);
+        bottom.Children.Add(btns);
         if (!Engine.HasFfmpeg && info?.IsDirectFile != true)
-            Controls.Add(new Label
-            {
-                Text = "Tip: install the converter in Settings for 1080p and above,\nMP3 and subtitles inside the video.",
-                Tag = "sub", AutoSize = true, Location = new Point(L, y + 1)
-            });
-        if (info?.IsDirectFile == true)
-        {
-            foreach (Control c in new Control[] { _video, _audio, _format, _quality, _qualityLabel, _subs, _embed, _subText }) c.Enabled = false;
-        }
-        ClientSize = new Size(W + L * 2, y + 36 + 20);
+            bottom.Children.Add(new TextBlock { Text = "Tip: install the converter in Settings for 1080p and above,\nMP3 and subtitles inside the video.", Classes = { "sub", "small" }, VerticalAlignment = VerticalAlignment.Center });
+        root.Children.Add(bottom);
 
-        _video.CheckedChanged += (_, _) => KindChanged();
-        _subs.CheckedChanged += (_, _) => SubsChanged();
-        _format.SelectedIndexChanged += (_, _) => FillQuality();
-        if (Result.Kind == MediaKind.Audio) _audio.Checked = true;
-        _subs.Checked = Result.Subtitles;
-        _embed.Checked = Result.EmbedSubtitles;
+        if (info?.IsDirectFile == true)
+            foreach (var c in new Control[] { _video, _audio, _format, _quality, _qualityLabel, _subs, _embed, _subText }) c.IsEnabled = false;
+
+        Content = root;
+
+        _video.IsCheckedChanged += (_, _) => KindChanged();
+        _subs.IsCheckedChanged += (_, _) => SubsChanged();
+        _format.SelectionChanged += (_, _) => FillQuality();
+        if (Result.Kind == MediaKind.Audio) _audio.IsChecked = true;
+        _subs.IsChecked = Result.Subtitles;
+        _embed.IsChecked = Result.EmbedSubtitles;
         KindChanged();
         SubsChanged();
 
-        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } if (e.KeyCode == Keys.Enter && ActiveControl is not CheckedListBox) Accept(); };
-        Theme.Style(this);
-        AcceptButton = null;
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter && FocusManager?.GetFocusedElement() is not (ListBoxItem or CheckBox or ComboBox)) { Accept(); e.Handled = true; }
+        };
     }
 
-    protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Theme.TitleBar(this); }
+    async Task<IStorageFolder?> TryFolder(string? path)
+    {
+        try { return string.IsNullOrWhiteSpace(path) || !Directory.Exists(path) ? null : await StorageProvider.TryGetFolderFromPathAsync(path); }
+        catch { return null; }
+    }
+
+    static Control Row(string label, Control content, bool bold = false)
+    {
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions($"{LabelW},*") };
+        var t = Ui.Text(label);
+        if (bold) t.Classes.Add("bold");
+        Grid.SetColumn(content, 1);
+        g.Children.AddRange(new Control[] { t, content });
+        return g;
+    }
+
+    void AddLang(string text, string code, bool on)
+    {
+        var cb = new CheckBox { Content = text, Tag = code, IsChecked = on, Margin = new Thickness(0, 0, 14, 0), MinWidth = 90 };
+        _langBoxes.Add(cb);
+        _subLangs.Children.Add(cb);
+    }
+
+    void SetAll(bool on)
+    {
+        foreach (var e in _info!.Entries) e.Selected = on;
+        _entries.ItemsSource = null;
+        _entries.ItemsSource = _info.Entries;
+    }
+
+    static Control Header(LinkInfo? i, string heading)
+    {
+        var thumb = new Thumbs.View(152, 86, 8);
+        thumb.Set(i?.Thumbnail ?? "", false, 0);
+        var bits = new List<string>();
+        if (i == null) bits.Add("These choices are used every time");
+        else if (i.IsPlaylist) bits.Add($"Playlist · {i.Entries.Count} videos");
+        else if (i.IsDirectFile) { bits.Add("Direct file link"); if (i.DirectSize > 0) bits.Add(Fmt.Bytes(i.DirectSize)); }
+        if (i != null && i.Uploader.Length > 0) bits.Add(i.Uploader);
+        if (i != null && i.Duration > 0) bits.Add(Fmt.Duration(i.Duration));
+        var title = new TextBlock { Text = i?.Title ?? heading, Classes = { "title" }, TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
+        var meta = new TextBlock { Text = string.Join("  ·  ", bits), Classes = { "sub" }, TextTrimming = TextTrimming.CharacterEllipsis };
+        var text = new DockPanel { Margin = new Thickness(16, 2, 0, 2) };
+        DockPanel.SetDock(meta, Dock.Bottom);
+        text.Children.AddRange(new Control[] { meta, title });
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Height = 86 };
+        Grid.SetColumn(text, 1);
+        g.Children.AddRange(new Control[] { thumb, text });
+        return g;
+    }
 
     static string EntryText(PlaylistEntry e) => e.Duration > 0 ? $"{e.Title}   ({Fmt.Duration(e.Duration)})" : e.Title;
 
     void KindChanged()
     {
-        bool video = _video.Checked;
+        bool video = _video.IsChecked == true;
         var list = video ? VideoFormats : AudioFormats;
-        _format.Items.Clear();
-        foreach (var f in list) _format.Items.Add(f.ToUpperInvariant());
+        _format.ItemsSource = list.Select(f => f.ToUpperInvariant()).ToList();
         int idx = Array.IndexOf(list, Result.Format);
         _format.SelectedIndex = idx >= 0 ? idx : 0;
-        _quality.Visible = _qualityLabel.Visible = video;
-        _subs.Enabled = video && _info?.IsDirectFile != true;
+        _quality.IsVisible = _qualityLabel.IsVisible = video;
+        _subs.IsEnabled = video && _info?.IsDirectFile != true;
         SubsChanged();
         FillQuality();
     }
 
     void SubsChanged()
     {
-        bool on = _subs.Checked && _subs.Enabled;
-        _embed.Enabled = on && Engine.HasFfmpeg;
-        _subLangs.Enabled = on;
-        _subText.Enabled = on;
+        bool on = _subs.IsChecked == true && _subs.IsEnabled;
+        _embed.IsEnabled = on && Engine.HasFfmpeg;
+        _subLangs.IsEnabled = on;
+        _subText.IsEnabled = on;
     }
 
     void FillQuality()
     {
-        if (!_video.Checked) return;
-        _quality.Items.Clear(); _qualityValues.Clear();
+        if (_video.IsChecked != true) return;
+        _qualityValues.Clear();
+        var items = new List<string>();
         var heights = _info?.Heights.Count > 0
             ? _info.Heights.Where(h => h >= 144).Select(h => h >= 4320 ? 4320 : h >= 2160 ? 2160 : h >= 1440 ? 1440 : h >= 1080 ? 1080 : h >= 720 ? 720 : h >= 480 ? 480 : h >= 360 ? 360 : h >= 240 ? 240 : 144).Distinct().ToList()
             : new List<int> { 4320, 2160, 1440, 1080, 720, 480, 360 };
-        _quality.Items.Add("Best available"); _qualityValues.Add(0);
+        items.Add("Best available"); _qualityValues.Add(0);
         foreach (var h in heights)
         {
             string size = "";
@@ -199,77 +242,40 @@ public class OptionsDialog : Form
                 var best = _info.SizeByHeight.Where(kv => kv.Key <= h).OrderByDescending(kv => kv.Key).Select(kv => kv.Value).FirstOrDefault();
                 if (best > 0) size = "   ~" + Fmt.Bytes(best + _info.AudioSize);
             }
-            _quality.Items.Add(DownloadOptions.QualityLabel(h) + (h >= 720 && h < 1440 ? " HD" : "") + size);
+            items.Add(DownloadOptions.QualityLabel(h) + (h >= 720 && h < 1440 ? " HD" : "") + size);
             _qualityValues.Add(h);
         }
+        _quality.ItemsSource = items;
         int want = Result.MaxHeight;
         int sel = _qualityValues.IndexOf(want);
         if (sel < 0 && want > 0) sel = _qualityValues.FindIndex(v => v > 0 && v <= want);
         _quality.SelectedIndex = sel >= 0 ? sel : 0;
     }
 
-    void Accept()
+    async void Accept()
     {
         var o = Result;
-        o.Kind = _audio.Checked ? MediaKind.Audio : MediaKind.Video;
+        o.Kind = _audio.IsChecked == true ? MediaKind.Audio : MediaKind.Video;
         o.Format = (_format.SelectedItem?.ToString() ?? "mp4").ToLowerInvariant();
         if (o.Kind == MediaKind.Video && _quality.SelectedIndex >= 0) o.MaxHeight = _qualityValues[_quality.SelectedIndex];
-        o.Subtitles = _subs.Checked && _subs.Enabled;
-        o.EmbedSubtitles = _embed.Checked;
-        if (_subLangs.Parent != null)
-        {
-            var langs = _subLangs.CheckedItems.Cast<object>().Select(x => x.ToString()!.Replace(" (auto)", "")).ToList();
-            if (langs.Count > 0) o.SubtitleLanguages = langs;
-        }
-        else
-        {
-            var langs = _subText.Text.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-            if (langs.Count > 0) o.SubtitleLanguages = langs;
-        }
-        var folder = _folder.Text.Trim();
+        o.Subtitles = _subs.IsChecked == true && _subs.IsEnabled;
+        o.EmbedSubtitles = _embed.IsChecked == true;
+        var langs = _useLangList
+            ? _langBoxes.Where(c => c.IsChecked == true).Select(c => (string)c.Tag!).ToList()
+            : (_subText.Text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (langs.Count > 0) o.SubtitleLanguages = langs;
+        var folder = (_folder.Text ?? "").Trim();
         if (folder.Length == 0) folder = AppState.DefaultFolder();
         try { Directory.CreateDirectory(folder); }
-        catch { MessageBox.Show(this, "That folder can't be used. Please pick another one.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        catch { await Info(this, Title ?? "", "That folder can't be used. Please pick another one."); return; }
         o.Folder = folder;
-        o.PlaylistSubfolder = _subfolder.Checked;
+        o.PlaylistSubfolder = _subfolder.IsChecked == true;
 
         if (_info?.IsPlaylist == true)
         {
-            ChosenEntries = _entries.CheckedIndices.Cast<int>().Select(i => _info.Entries[i]).ToList();
-            if (ChosenEntries.Count == 0) { MessageBox.Show(this, "Pick at least one video from the playlist.", Text); return; }
+            ChosenEntries = _info.Entries.Where(e => e.Selected).ToList();
+            if (ChosenEntries.Count == 0) { await Info(this, Title ?? "", "Pick at least one video from the playlist."); return; }
         }
-        DialogResult = DialogResult.OK;
-        Close();
-    }
-
-    class HeaderPanel : Control
-    {
-        readonly LinkInfo? _i; readonly string _heading;
-        public HeaderPanel(LinkInfo? i, string heading)
-        {
-            _i = i; _heading = heading;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            Thumbs.Loaded += () => { if (IsHandleCreated) BeginInvoke(Invalidate); };
-        }
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            var g = e.Graphics; float s = DeviceDpi / 96f;
-            g.Clear(Theme.Surface);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            var th = new RectangleF(0, 0, Height * 16f / 9f, Height);
-            var img = _i == null ? null : Thumbs.Get(_i.Thumbnail);
-            if (img != null) { using var clip = Theme.Round(th, 8 * s); g.SetClip(clip); g.DrawImage(img, th); g.ResetClip(); }
-            else Thumbs.DrawPlaceholder(g, th, false, s);
-            int x = (int)(th.Right + 16 * s);
-            string title = _i?.Title ?? _heading;
-            TextRenderer.DrawText(g, title, Theme.Title, new Rectangle(x, (int)(4 * s), Width - x, (int)(50 * s)), Theme.Text, TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            var bits = new List<string>();
-            if (_i == null) bits.Add("These choices are used every time");
-            else if (_i.IsPlaylist) bits.Add($"Playlist · {_i.Entries.Count} videos");
-            else if (_i.IsDirectFile) { bits.Add("Direct file link"); if (_i.DirectSize > 0) bits.Add(Fmt.Bytes(_i.DirectSize)); }
-            if (_i != null && _i.Uploader.Length > 0) bits.Add(_i.Uploader);
-            if (_i != null && _i.Duration > 0) bits.Add(Fmt.Duration(_i.Duration));
-            TextRenderer.DrawText(g, string.Join("  ·  ", bits), Theme.Base, new Rectangle(x, Height - (int)(24 * s), Width - x, (int)(22 * s)), Theme.SubText, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        }
+        Close(true);
     }
 }

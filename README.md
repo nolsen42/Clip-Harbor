@@ -1,12 +1,12 @@
 # ClipHarbor
 
-A free, open-source video and audio downloader for Windows. No download caps, no playlist limits, no account.
+A free, open-source video and audio downloader for Windows, macOS and Linux. No download caps, no playlist limits, no account.
 
 ![ClipHarbor main window](docs/screenshot.png)
 
 ## Features
 
-- **Paste Link**: copy a link, press the button (or Ctrl+V), choose your options and download. You can also drag links onto the window or pass them on the command line.
+- **Paste Link**: copy a link, press the button (or Ctrl+V, ⌘V on a Mac), choose your options and download. You can also drag links onto the window or pass them on the command line.
 - **Video or audio only**: MP4, MKV or WEBM video up to the best quality the site offers (4K/8K included), or MP3, M4A, OPUS, FLAC or WAV audio.
 - **Whole playlists and channels**: pick which videos you want, optionally saved into a folder named after the playlist.
 - **Subtitles**: choose languages, saved as files or embedded in the video.
@@ -17,39 +17,71 @@ A free, open-source video and audio downloader for Windows. No download caps, no
 
 ![Dark look](docs/screenshot-dark.png)
 
+## Download
+
+Ready-made builds are made by GitHub Actions on every update. Open the **Actions** tab, pick the latest **Build** run and download the file for your computer from **Artifacts**:
+
+| System | File | How to start it |
+| --- | --- | --- |
+| Windows (64-bit) | `ClipHarbor-windows-x64` | Unzip and run `ClipHarbor.exe`. |
+| Mac with Apple chip (M1 and later) | `ClipHarbor-macos-apple-silicon` | Unzip, then unzip the `.zip` inside and move **ClipHarbor** to Applications. |
+| Mac with Intel chip | `ClipHarbor-macos-intel` | Same as above. |
+| Linux (most PCs) | `ClipHarbor-linux-x64` | Unzip, then `tar -xzf ClipHarbor-linux-x64.tar.gz` and run `ClipHarbor/ClipHarbor`. |
+| Linux on ARM (e.g. Raspberry Pi 4/5) | `ClipHarbor-linux-arm64` | Same as above. |
+
+**First start on a Mac:** ClipHarbor isn't signed with a paid Apple developer account, so macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to ClipHarbor. You only need to do this once.
+
+**On Linux** the "show a notice when downloads finish" option uses `notify-send`, and installing the converter uses `tar` with xz support. Both come with almost every desktop Linux.
+
 ## Download engine
 
 ClipHarbor downloads from video sites with two free, open-source tools that are **not included** in this repository:
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense), which reads and downloads from video sites
-- [FFmpeg](https://ffmpeg.org/) (LGPL/GPL, builds from [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds)), which joins high-quality video and audio and converts formats
+- [FFmpeg](https://ffmpeg.org/) (LGPL/GPL), which joins high-quality video and audio and converts formats. ClipHarbor uses the builds from [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds) on Windows and Linux, and from [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de/) on macOS.
 
-The first time you run ClipHarbor, press **Install engine**. The app then downloads both tools into `%LOCALAPPDATA%\ClipHarbor\tools` (about 140 MB). If `yt-dlp.exe` and `ffmpeg.exe` are already on your `PATH`, or you point to them in Settings, ClipHarbor uses those instead. Direct links to media files (for example `.mp4` or `.mp3`) work without the engine.
+The first time you run ClipHarbor, press **Install engine**. The app downloads both tools for your system (about 100–200 MB) into:
+
+| System | Folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\ClipHarbor\tools` |
+| macOS | `~/Library/Application Support/ClipHarbor/tools` |
+| Linux | `~/.local/share/ClipHarbor/tools` |
+
+If `yt-dlp` and `ffmpeg` are already installed (for example with Homebrew, apt or winget), or you point to them in Settings, ClipHarbor uses those instead. Direct links to media files (for example `.mp4` or `.mp3`) work without the engine.
 
 ## Building
 
-You need Windows and the free [.NET 10 SDK](https://dotnet.microsoft.com/download).
+You need the free [.NET 10 SDK](https://dotnet.microsoft.com/download) on Windows, macOS or Linux. The interface is built with [Avalonia](https://avaloniaui.net/) (MIT), which NuGet downloads automatically.
 
-```powershell
+```
 dotnet build -c Release
 dotnet run -c Release
 ```
 
-To make a single `.exe` that runs without .NET installed:
+To make a single program file that runs without .NET installed, pick your system's ID (`win-x64`, `osx-arm64`, `osx-x64`, `linux-x64` or `linux-arm64`):
 
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+```
+dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-Each push also builds automatically on GitHub Actions (see `.github/workflows/build.yml`), and the finished program can be downloaded from the run's artifacts.
+GitHub Actions (see `.github/workflows/build.yml`) builds all five versions, wraps the Mac ones as a `.app`, and checks that the app starts on each system.
 
 ### Screenshot option
 
-`ClipHarbor.exe --screenshot out.png` starts the app without taking focus, draws about 120 frames, saves a picture of the window and exits. Automated checks use this option.
+`ClipHarbor --screenshot out.png` starts the app without taking focus, saves a picture of the window and exits. Automated checks use this option.
 
 ## Where your data is kept
 
-Your download list, subscriptions and settings are saved in `%APPDATA%\ClipHarbor\state.json`. By default, downloads go to `Videos\ClipHarbor`.
+Your download list, subscriptions and settings are saved in `state.json` in:
+
+| System | Folder |
+| --- | --- |
+| Windows | `%APPDATA%\ClipHarbor` |
+| macOS | `~/Library/Application Support/ClipHarbor` |
+| Linux | `~/.config/ClipHarbor` |
+
+By default, downloads go to a `ClipHarbor` folder inside your Videos folder (Movies on a Mac).
 
 ## Download responsibly
 
@@ -57,4 +89,4 @@ Only download content you have the right to download. Respect copyright and each
 
 ## License
 
-[MIT](LICENSE). The download tools named above have their own licenses.
+[MIT](LICENSE). The download tools named above, and Avalonia, have their own licenses.

@@ -1,0 +1,252 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:ClipHarbor"
+             x:Class="ClipHarbor.App"
+             Name="ClipHarbor"
+             RequestedThemeVariant="Light">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="Back" Color="#F5F6F8" />
+          <SolidColorBrush x:Key="Surface" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="Sidebar" Color="#ECEEF2" />
+          <SolidColorBrush x:Key="Line" Color="#DDE0E6" />
+          <SolidColorBrush x:Key="Text" Color="#1D2129" />
+          <SolidColorBrush x:Key="SubText" Color="#6A7280" />
+          <SolidColorBrush x:Key="Hover" Color="#F0F3F8" />
+          <SolidColorBrush x:Key="Selected" Color="#E3ECFD" />
+          <SolidColorBrush x:Key="SelectedLine" Color="#97B7F5" />
+          <SolidColorBrush x:Key="Track" Color="#E3E6EB" />
+          <SolidColorBrush x:Key="NavHover" Color="#E2E5EB" />
+          <SolidColorBrush x:Key="NavSelected" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="Pill" Color="#E3E6EB" />
+          <SolidColorBrush x:Key="PillSelected" Color="#DCE7FC" />
+          <SolidColorBrush x:Key="InfoBack" Color="#EAF1FD" />
+          <SolidColorBrush x:Key="WarnBack" Color="#FBF1E1" />
+          <SolidColorBrush x:Key="EmptyCircle" Color="#E1E9F9" />
+          <SolidColorBrush x:Key="InputBack" Color="#FFFFFF" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="Back" Color="#1C1E23" />
+          <SolidColorBrush x:Key="Surface" Color="#25282E" />
+          <SolidColorBrush x:Key="Sidebar" Color="#17191D" />
+          <SolidColorBrush x:Key="Line" Color="#363A42" />
+          <SolidColorBrush x:Key="Text" Color="#ECEEF2" />
+          <SolidColorBrush x:Key="SubText" Color="#9AA1AE" />
+          <SolidColorBrush x:Key="Hover" Color="#2D3138" />
+          <SolidColorBrush x:Key="Selected" Color="#263655" />
+          <SolidColorBrush x:Key="SelectedLine" Color="#2A4F96" />
+          <SolidColorBrush x:Key="Track" Color="#3A3F48" />
+          <SolidColorBrush x:Key="NavHover" Color="#22252B" />
+          <SolidColorBrush x:Key="NavSelected" Color="#2D3138" />
+          <SolidColorBrush x:Key="Pill" Color="#363A42" />
+          <SolidColorBrush x:Key="PillSelected" Color="#2A3A5A" />
+          <SolidColorBrush x:Key="InfoBack" Color="#27324A" />
+          <SolidColorBrush x:Key="WarnBack" Color="#3C3426" />
+          <SolidColorBrush x:Key="EmptyCircle" Color="#232D3F" />
+          <SolidColorBrush x:Key="InputBack" Color="#2A2D34" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <SolidColorBrush x:Key="Brand" Color="#2F6FEB" />
+      <SolidColorBrush x:Key="BrandHover" Color="#245CCF" />
+      <SolidColorBrush x:Key="Good" Color="#1EA46A" />
+      <SolidColorBrush x:Key="Bad" Color="#DC3B3B" />
+      <SolidColorBrush x:Key="Warn" Color="#D98B0B" />
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#2F6FEB" RegionColor="#FFFFFF" ErrorText="#DC3B3B" />
+        <ColorPaletteResources x:Key="Dark" Accent="#2F6FEB" RegionColor="#25282E" ErrorText="#DC3B3B" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+
+    <!-- base -->
+    <Style Selector="Window">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Background" Value="{DynamicResource Surface}" />
+      <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    </Style>
+    <Style Selector="TextBlock.sub"><Setter Property="Foreground" Value="{DynamicResource SubText}" /></Style>
+    <Style Selector="TextBlock.small"><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="TextBlock.bold"><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.title"><Setter Property="FontSize" Value="17" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.brand"><Setter Property="FontSize" Value="21" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.good"><Setter Property="Foreground" Value="{DynamicResource Good}" /></Style>
+    <Style Selector="TextBlock.bad"><Setter Property="Foreground" Value="{DynamicResource Bad}" /></Style>
+    <Style Selector="TextBlock.warn"><Setter Property="Foreground" Value="{DynamicResource Warn}" /></Style>
+    <Style Selector="local|Icon.good"><Setter Property="Foreground" Value="{DynamicResource Good}" /></Style>
+    <Style Selector="local|Icon.bad"><Setter Property="Foreground" Value="{DynamicResource Bad}" /></Style>
+    <Style Selector="local|Icon.warn"><Setter Property="Foreground" Value="{DynamicResource Warn}" /></Style>
+    <Style Selector="local|Icon.sub"><Setter Property="Foreground" Value="{DynamicResource SubText}" /></Style>
+    <Style Selector="local|Icon.brand"><Setter Property="Foreground" Value="{DynamicResource Brand}" /></Style>
+
+    <!-- surfaces -->
+    <Style Selector="Border.bar">
+      <Setter Property="Background" Value="{DynamicResource Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+    </Style>
+    <Style Selector=":is(Border).sidebar"><Setter Property="Background" Value="{DynamicResource Sidebar}" /></Style>
+    <Style Selector=":is(Panel).back"><Setter Property="Background" Value="{DynamicResource Back}" /></Style>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="{DynamicResource Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Border.banner">
+      <Setter Property="Background" Value="{DynamicResource InfoBack}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="Border.banner.warn"><Setter Property="Background" Value="{DynamicResource WarnBack}" /></Style>
+    <Style Selector="Border.empty"><Setter Property="Background" Value="{DynamicResource EmptyCircle}" /></Style>
+
+    <!-- download rows -->
+    <Style Selector=":is(Border).card">
+      <Setter Property="Background" Value="{DynamicResource Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector=":is(Border).card:pointerover"><Setter Property="Background" Value="{DynamicResource Hover}" /></Style>
+    <Style Selector="ListBoxItem:selected :is(Border).card">
+      <Setter Property="Background" Value="{DynamicResource Selected}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SelectedLine}" />
+    </Style>
+    <Style Selector="Border.badge">
+      <Setter Property="Background" Value="#BE000000" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="4,0" />
+    </Style>
+    <Style Selector="ProgressBar.thin">
+      <Setter Property="Height" Value="5" />
+      <Setter Property="MinHeight" Value="5" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Foreground" Value="{DynamicResource Brand}" />
+      <Setter Property="Background" Value="{DynamicResource Track}" />
+    </Style>
+    <Style Selector="ProgressBar.thin.finishing"><Setter Property="Foreground" Value="{DynamicResource Good}" /></Style>
+
+    <!-- plain list: our own cards draw hover and selection -->
+    <Style Selector="ListBox.plain">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBox.plain ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.plain ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="ListBox.plain ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="ListBox.plain ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="ListBox.plain ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="ListBox.plain ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="ListBox.plain ListBoxItem:selected:focus /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /></Style>
+
+    <Style Selector="ListBox.compact ListBoxItem">
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="ListBox.compact CheckBox"><Setter Property="MinHeight" Value="30" /></Style>
+
+    <!-- table rows (subscriptions) -->
+    <Style Selector="ListBox.table ListBoxItem">
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="MinHeight" Value="38" />
+    </Style>
+    <Style Selector="ListBox.table ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource Selected}" /></Style>
+    <Style Selector="ListBox.table ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource Selected}" /></Style>
+    <Style Selector="ListBox.table ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{DynamicResource Hover}" /></Style>
+
+    <!-- buttons -->
+    <Style Selector="Button, ToggleButton">
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="14,7" />
+    </Style>
+    <Style Selector="Button.flat, ToggleButton.flat">
+      <Setter Property="Background" Value="{DynamicResource Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    </Style>
+    <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Hover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+      <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    </Style>
+    <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Track}" />
+    </Style>
+    <Style Selector="ToggleButton.flat:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Brand}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brand}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ToggleButton.flat:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource BrandHover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BrandHover}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.icon">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource SubText}" />
+    </Style>
+    <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Track}" />
+      <Setter Property="Foreground" Value="{DynamicResource Text}" />
+    </Style>
+    <Style Selector="Button.icon.brand"><Setter Property="Foreground" Value="{DynamicResource Brand}" /></Style>
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Foreground" Value="{DynamicResource Brand}" />
+    </Style>
+    <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource BrandHover}" />
+    </Style>
+
+    <!-- sidebar -->
+    <Style Selector="Border.nav">
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="Margin" Value="10,1" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.nav:pointerover"><Setter Property="Background" Value="{DynamicResource NavHover}" /></Style>
+    <Style Selector="Border.nav.selected"><Setter Property="Background" Value="{DynamicResource NavSelected}" /></Style>
+    <Style Selector="Border.nav local|Icon"><Setter Property="Foreground" Value="{DynamicResource SubText}" /></Style>
+    <Style Selector="Border.nav.selected local|Icon"><Setter Property="Foreground" Value="{DynamicResource Brand}" /></Style>
+    <Style Selector="Border.nav.selected TextBlock.label"><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="Border.navmark">
+      <Setter Property="Background" Value="{DynamicResource Brand}" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Border.nav.selected Border.navmark"><Setter Property="IsVisible" Value="True" /></Style>
+    <Style Selector="Border.pill">
+      <Setter Property="Background" Value="{DynamicResource Pill}" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="7,1" />
+    </Style>
+    <Style Selector="Border.nav.selected Border.pill"><Setter Property="Background" Value="{DynamicResource PillSelected}" /></Style>
+    <Style Selector="Border.pill TextBlock"><Setter Property="Foreground" Value="{DynamicResource SubText}" /></Style>
+    <Style Selector="Border.nav.selected Border.pill TextBlock"><Setter Property="Foreground" Value="{DynamicResource Brand}" /></Style>
+  </Application.Styles>
+</Application>

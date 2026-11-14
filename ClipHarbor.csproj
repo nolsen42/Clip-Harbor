@@ -2,20 +2,30 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <ApplicationIcon>assets\ClipHarbor.ico</ApplicationIcon>
     <AssemblyName>ClipHarbor</AssemblyName>
     <RootNamespace>ClipHarbor</RootNamespace>
+    <ApplicationIcon>assets\ClipHarbor.ico</ApplicationIcon>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
     <Product>ClipHarbor</Product>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>Free, open-source video and audio downloader.</Description>
     <Copyright>Copyright (c) 2026 ClipHarbor contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <NoWarn>$(NoWarn);WFO1000;CA1416</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="assets\ClipHarbor.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.23" />
+  </ItemGroup>
 
 </Project>

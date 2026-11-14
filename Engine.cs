@@ -27,13 +27,13 @@ public class LinkInfo
 
 public class PlaylistEntry
 {
-    public string Url = "";
-    public string Id = "";
-    public string Title = "";
-    public string Uploader = "";
-    public string Thumbnail = "";
-    public double Duration;
-    public bool Selected = true;
+    public string Url { get; set; } = "";
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Uploader { get; set; } = "";
+    public string Thumbnail { get; set; } = "";
+    public double Duration { get; set; }
+    public bool Selected { get; set; } = true;
 }
 
 /// <summary>Finds and drives the open-source download engine (yt-dlp) and ffmpeg.</summary>
@@ -49,29 +49,27 @@ public static class Engine
         return h;
     }
 
-    public static string ToolsDir
-    {
-        get { var d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipHarbor", "tools"); Directory.CreateDirectory(d); return d; }
-    }
+    public static string ToolsDir => Platform.ToolsDir;
 
-    static string? FindTool(string exe, string configured)
+    static string? FindTool(string name, string configured)
     {
         if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
+        var exe = Platform.Exe(name);
         foreach (var dir in new[] { ToolsDir, AppContext.BaseDirectory })
         {
             var p = Path.Combine(dir, exe);
             if (File.Exists(p)) return p;
         }
         var path = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Concat(Platform.ExtraToolDirs()))
         {
             try { var p = Path.Combine(dir.Trim('"'), exe); if (File.Exists(p)) return p; } catch { }
         }
         return null;
     }
 
-    public static string? YtDlp => FindTool("yt-dlp.exe", Settings.EnginePath);
-    public static string? Ffmpeg => FindTool("ffmpeg.exe", Settings.FfmpegPath);
+    public static string? YtDlp => FindTool("yt-dlp", Settings.EnginePath);
+    public static string? Ffmpeg => FindTool("ffmpeg", Settings.FfmpegPath);
     public static bool HasEngine => YtDlp != null;
     public static bool HasFfmpeg => Ffmpeg != null;
 
@@ -334,9 +332,12 @@ public static class Engine
         return a;
     }
 
+    // The Windows list on every system, so folders stay valid when copied between computers.
+    static readonly char[] BadNameChars = "<>:\"/\\|?*".Concat(Enumerable.Range(0, 32).Select(i => (char)i)).ToArray();
+
     public static string SafeName(string s)
     {
-        var bad = Path.GetInvalidFileNameChars();
+        var bad = BadNameChars;
         var r = new string(s.Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
         if (r.Length > 120) r = r[..120];
         return r.Length == 0 ? "download" : r;
@@ -476,31 +477,102 @@ public static class Engine
 
     // ---------- engine install / update ----------
 
-    public const string EngineUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-    public const string FfmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+    const string YtDlpBase = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/";
+    const string FfmpegBase = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/";
+    const string MacFfmpegBase = "https://ffmpeg.martin-riedl.de/redirect/latest/macos/";
+
+    /// <summary>The ready-made yt-dlp program for this system.</summary>
+    public static string EngineUrl =>
+        Platform.IsWindows ? YtDlpBase + "yt-dlp.exe"
+        : Platform.IsMac ? YtDlpBase + "yt-dlp_macos"
+        : YtDlpBase + (Platform.IsArm ? "yt-dlp_linux_aarch64" : "yt-dlp_linux");
+
+    /// <summary>Rough size of the one-time download, for messages.</summary>
+    public static string InstallSize => Platform.IsMac ? "about 100 MB" : Platform.IsLinux ? "about 200 MB" : "about 140 MB";
 
     public static async Task InstallEngineAsync(IProgress<(string, double)> progress, bool withFfmpeg, CancellationToken ct)
     {
-        var target = Path.Combine(ToolsDir, "yt-dlp.exe");
+        var target = Path.Combine(ToolsDir, Platform.Exe("yt-dlp"));
         await FetchAsync(EngineUrl, target + ".part", "Download engine", progress, ct);
         File.Move(target + ".part", target, true);
+        Platform.MakeExecutable(target);
         if (withFfmpeg && !HasFfmpeg)
         {
-            var zip = Path.Combine(ToolsDir, "ffmpeg.zip");
-            await FetchAsync(FfmpegUrl, zip, "Video converter (ffmpeg)", progress, ct);
-            progress.Report(("Unpacking video converter…", 1));
-            await Task.Run(() =>
+            const string label = "Video converter (ffmpeg)";
+            if (Platform.IsWindows)
             {
-                using var z = ZipFile.OpenRead(zip);
-                foreach (var e in z.Entries)
+                var zip = Path.Combine(ToolsDir, "ffmpeg.zip");
+                await FetchAsync(FfmpegBase + "ffmpeg-master-latest-win64-gpl.zip", zip, label, progress, ct);
+                progress.Report(("Unpacking video converter…", 1));
+                await Task.Run(() => ExtractFromZip(zip, "ffmpeg.exe", "ffprobe.exe"), ct);
+                File.Delete(zip);
+            }
+            else if (Platform.IsMac)
+            {
+                var arch = Platform.IsArm ? "arm64" : "amd64";
+                foreach (var tool in new[] { "ffmpeg", "ffprobe" })
                 {
-                    var n = e.Name.ToLowerInvariant();
-                    if (n is "ffmpeg.exe" or "ffprobe.exe") e.ExtractToFile(Path.Combine(ToolsDir, n), true);
+                    var zip = Path.Combine(ToolsDir, tool + ".zip");
+                    await FetchAsync($"{MacFfmpegBase}{arch}/release/{tool}.zip", zip, tool == "ffmpeg" ? label : "Media reader (ffprobe)", progress, ct);
+                    progress.Report(("Unpacking video converter…", 1));
+                    await Task.Run(() => ExtractFromZip(zip, tool), ct);
+                    File.Delete(zip);
                 }
-            }, ct);
-            File.Delete(zip);
+            }
+            else
+            {
+                var archive = Path.Combine(ToolsDir, "ffmpeg.tar.xz");
+                await FetchAsync(FfmpegBase + (Platform.IsArm ? "ffmpeg-master-latest-linuxarm64-gpl.tar.xz" : "ffmpeg-master-latest-linux64-gpl.tar.xz"), archive, label, progress, ct);
+                progress.Report(("Unpacking video converter…", 1));
+                await ExtractFromTarXzAsync(archive, ct, "ffmpeg", "ffprobe");
+                File.Delete(archive);
+            }
         }
         progress.Report(("Ready", 1));
+    }
+
+    static void ExtractFromZip(string zip, params string[] names)
+    {
+        using var z = ZipFile.OpenRead(zip);
+        foreach (var e in z.Entries)
+        {
+            if (!names.Contains(e.Name, StringComparer.OrdinalIgnoreCase)) continue;
+            var dest = Path.Combine(ToolsDir, e.Name.ToLowerInvariant());
+            e.ExtractToFile(dest, true);
+            Platform.MakeExecutable(dest);
+        }
+    }
+
+    /// <summary>.NET can't read .xz, so Linux uses the system's tar (installed almost everywhere).</summary>
+    static async Task ExtractFromTarXzAsync(string archive, CancellationToken ct, params string[] names)
+    {
+        var tmp = Path.Combine(ToolsDir, "unpack");
+        if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var psi = new ProcessStartInfo("tar") { UseShellExecute = false, RedirectStandardError = true };
+            foreach (var a in new[] { "-xJf", archive, "-C", tmp }) psi.ArgumentList.Add(a);
+            Process p;
+            try { p = Process.Start(psi)!; }
+            catch { throw new InvalidOperationException("Couldn't unpack the converter. Install ffmpeg with your package manager instead (for example: sudo apt install ffmpeg)."); }
+            using (p)
+            {
+                var err = await p.StandardError.ReadToEndAsync(ct);
+                await p.WaitForExitAsync(ct);
+                if (p.ExitCode != 0)
+                    throw new InvalidOperationException("Couldn't unpack the converter (" + CleanError(err) + "). Install ffmpeg with your package manager instead (for example: sudo apt install ffmpeg).");
+            }
+            foreach (var f in Directory.EnumerateFiles(tmp, "*", SearchOption.AllDirectories))
+            {
+                var n = Path.GetFileName(f);
+                if (!names.Contains(n)) continue;
+                var dest = Path.Combine(ToolsDir, n);
+                File.Move(f, dest, true);
+                Platform.MakeExecutable(dest);
+            }
+        }
+        finally { try { Directory.Delete(tmp, true); } catch { } }
     }
 
     static async Task FetchAsync(string url, string dest, string label, IProgress<(string, double)> progress, CancellationToken ct)
