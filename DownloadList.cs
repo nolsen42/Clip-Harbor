@@ -183,6 +183,8 @@ public class RowView : Border
             _bar.Value = finishing ? 1 : it.Progress;
             SetClass(_status, "");
             if (finishing) _status.Text = "Finishing up…";
+            else if (it.Phase == "converting")
+                _status.Text = $"Making {it.Options.Format.ToUpperInvariant()}" + (it.Progress > 0 ? $"  ·  {it.Progress * 100:0}%" : "…");
             else
             {
                 var parts = new List<string> { it.Progress > 0 ? $"{it.Progress * 100:0}%" : "Starting…" };

@@ -293,7 +293,12 @@ public static class Engine
         if (!string.IsNullOrWhiteSpace(s.SpeedLimit)) { a.Add("-r"); a.Add(s.SpeedLimit.Trim()); }
         if (!s.SkipExisting) a.Add("--force-overwrites");
 
-        if (o.Kind == MediaKind.Audio)
+        if (o.Kind == MediaKind.Animation)
+        {
+            // Only the picture is needed; prefer a single ready-made file so nothing has to be joined.
+            a.AddRange(new[] { "-f", "bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]/bv*[height<=1080]/b[height<=1080]/bv*/b" });
+        }
+        else if (o.Kind == MediaKind.Audio)
         {
             if (ff)
             {
@@ -325,7 +330,7 @@ public static class Engine
             a.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", o.SubtitleLanguages.Count > 0 ? string.Join(",", o.SubtitleLanguages) : "en.*" });
             if (ff) { a.AddRange(new[] { "--convert-subs", "srt" }); if (o.EmbedSubtitles) a.Add("--embed-subs"); }
         }
-        if (ff && s.EmbedMetadata) a.Add("--embed-metadata");
+        if (ff && s.EmbedMetadata && o.Kind != MediaKind.Animation) a.Add("--embed-metadata");
         if (ff && s.EmbedThumbnail && (o.Kind == MediaKind.Video ? o.Format is "mp4" or "mkv" : o.Format is "mp3" or "m4a" or "flac" or "opus")) a.Add("--embed-thumbnail");
         a.Add("--");
         a.Add(it.Url);
@@ -346,11 +351,33 @@ public static class Engine
     /// <summary>Runs one download; reports progress through the item fields. Returns when finished.</summary>
     public static async Task RunDownloadAsync(DownloadItem it, CancellationToken ct)
     {
-        if (it.Direct || (!HasEngine && LooksDirect(it.Url)))
+        bool animation = it.Options.Kind == MediaKind.Animation;
+        if (animation && !HasFfmpeg)
+            throw new InvalidOperationException("Making GIF or WebP files needs the converter (ffmpeg). Open Settings → Download engine to add it.");
+
+        // Converting a file that's already on this computer.
+        if (it.SourceFile.Length > 0)
         {
-            await DirectDownloadAsync(it, ct);
+            if (!File.Exists(it.SourceFile)) throw new InvalidOperationException("The video file isn't there anymore: " + it.SourceFile);
+            await MakeAnimationAsync(it, it.SourceFile, keepSource: true, ct);
             return;
         }
+
+        if (it.Direct || (!HasEngine && LooksDirect(it.Url)))
+            await DirectDownloadAsync(it, ct);
+        else
+            await YtDlpDownloadAsync(it, ct);
+
+        if (animation)
+        {
+            if (string.IsNullOrEmpty(it.FilePath) || !File.Exists(it.FilePath))
+                throw new InvalidOperationException("The video downloaded, but its file couldn't be found to convert.");
+            await MakeAnimationAsync(it, it.FilePath, it.Options.KeepVideo, ct);
+        }
+    }
+
+    static async Task YtDlpDownloadAsync(DownloadItem it, CancellationToken ct)
+    {
         var exe = YtDlp ?? throw new InvalidOperationException("The download engine isn't installed. Open Settings → Engine to install it.");
         Directory.CreateDirectory(string.IsNullOrWhiteSpace(it.Options.Folder) ? AppState.DefaultFolder() : it.Options.Folder);
         var psi = Psi(exe, BuildDownloadArgs(it));
@@ -399,6 +426,70 @@ public static class Engine
         }
         if (!string.IsNullOrEmpty(it.FilePath) && File.Exists(it.FilePath))
             it.TotalBytes = new FileInfo(it.FilePath).Length;
+    }
+
+    // ---------- GIF / WebP ----------
+
+    /// <summary>Turns a video into an endlessly looping GIF or animated WebP next to it, with progress.</summary>
+    public static async Task MakeAnimationAsync(DownloadItem it, string source, bool keepSource, CancellationToken ct)
+    {
+        var ff = Ffmpeg ?? throw new InvalidOperationException("Making GIF or WebP files needs the converter (ffmpeg). Open Settings → Download engine to add it.");
+        var o = it.Options;
+        bool webp = o.Format == "webp";
+        var ext = webp ? ".webp" : ".gif";
+        var dir = Path.GetDirectoryName(Path.GetFullPath(source))!;
+        var name = Path.GetFileNameWithoutExtension(source);
+        var target = Path.Combine(dir, name + ext);
+        for (int n = 2; File.Exists(target); n++) target = Path.Combine(dir, $"{name} ({n}){ext}");
+        var tmp = target + ".part";
+
+        var scale = o.AnimationWidth > 0 ? $"scale='min({o.AnimationWidth},iw)':-2:flags=lanczos" : "scale=iw:-2:flags=lanczos";
+        var args = new List<string> { "-hide_banner", "-nostdin", "-y", "-i", source, "-an", "-progress", "pipe:1", "-nostats" };
+        if (webp)
+            args.AddRange(new[] { "-vf", $"fps=20,{scale}", "-c:v", "libwebp_anim", "-lossless", "0", "-quality", "75", "-compression_level", "4", "-loop", "0", "-f", "webp" });
+        else
+            // A colour palette made from this clip keeps GIFs sharp and small.
+            args.AddRange(new[] { "-vf", $"fps=15,{scale},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle", "-loop", "0", "-f", "gif" });
+        args.Add(tmp);
+
+        it.Phase = "converting"; it.Progress = 0; it.Speed = 0; it.Eta = -1;
+        double duration = it.DurationSeconds;
+        var err = new StringBuilder();
+        using var p = Process.Start(Psi(ff, args))!;
+        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
+        var errTask = Task.Run(async () =>
+        {
+            string? l;
+            while ((l = await p.StandardError.ReadLineAsync()) != null)
+            {
+                lock (err) err.AppendLine(l);
+                var m = System.Text.RegularExpressions.Regex.Match(l, @"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)");
+                if (m.Success && duration <= 0)
+                    duration = int.Parse(m.Groups[1].Value) * 3600 + int.Parse(m.Groups[2].Value) * 60 + double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+            }
+        });
+        string? line;
+        while ((line = await p.StandardOutput.ReadLineAsync()) != null)
+        {
+            if (line.StartsWith("out_time_us=") && long.TryParse(line[12..], out var us) && duration > 0)
+                it.Progress = Math.Clamp(us / 1e6 / duration, 0, 1);
+        }
+        await p.WaitForExitAsync();
+        await errTask;
+        if (ct.IsCancellationRequested || p.ExitCode != 0)
+        {
+            try { File.Delete(tmp); } catch { }
+            ct.ThrowIfCancellationRequested();
+            string e; lock (err) e = err.ToString();
+            if (!e.Contains("Video:"))
+                throw new InvalidOperationException("That file has no picture, so it can't be turned into a " + (webp ? "WebP." : "GIF."));
+            throw new InvalidOperationException("Couldn't make the " + (webp ? "WebP" : "GIF") + ": " + CleanError(e));
+        }
+        File.Move(tmp, target, true);
+        if (!keepSource) try { File.Delete(source); } catch { }
+        it.FilePath = target;
+        it.TotalBytes = new FileInfo(target).Length;
+        it.Progress = 1; it.Phase = "";
     }
 
     static long ParseL(string[] p, int i) => i < p.Length && double.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? (long)v : 0;

@@ -17,6 +17,10 @@ public class OptionsDialog : Dialog
 
     readonly RadioButton _video = new() { Content = "Video", GroupName = "kind", IsChecked = true };
     readonly RadioButton _audio = new() { Content = "Audio only", GroupName = "kind" };
+    readonly RadioButton _anim = new() { Content = "GIF / WebP", GroupName = "kind" };
+    readonly CheckBox _keepVideo = new() { Content = "Also keep the video file" };
+    readonly StackPanel _animArea = new() { Spacing = 2, Margin = new Thickness(LabelW, -4, 0, 0) };
+    readonly StackPanel _subsArea = new() { Spacing = 14 };
     readonly ComboBox _format = new() { Width = 150 };
     readonly ComboBox _quality = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     readonly TextBlock _qualityLabel = new() { Text = "Quality", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 12, 0) };
@@ -33,6 +37,8 @@ public class OptionsDialog : Dialog
 
     static readonly string[] VideoFormats = { "mp4", "mkv", "webm" };
     static readonly string[] AudioFormats = { "mp3", "m4a", "opus", "flac", "wav" };
+    static readonly string[] AnimFormats = { "gif", "webp" };
+    static readonly (string label, int width)[] AnimSizes = { ("Small · 320 px wide", 320), ("Medium · 480 px wide", 480), ("Large · 720 px wide", 720), ("Full size (large files)", 0) };
     const double W = 600, LabelW = 130;
 
     public OptionsDialog(LinkInfo? info, DownloadOptions start, string heading) : base(heading)
@@ -65,7 +71,7 @@ public class OptionsDialog : Dialog
             root.Children.Add(new StackPanel { Spacing = 6, Children = { head, new Border { Classes = { "panel" }, Child = _entries, ClipToBounds = true, CornerRadius = new CornerRadius(6) } } });
         }
 
-        var kind = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18, Children = { _video, _audio } };
+        var kind = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18, Children = { _video, _audio, _anim } };
         root.Children.Add(Row("Download as", kind, bold: true));
 
         var formatRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
@@ -73,8 +79,14 @@ public class OptionsDialog : Dialog
         formatRow.Children.AddRange(new Control[] { _format, _qualityLabel, _quality });
         root.Children.Add(Row("Format", formatRow));
 
+        _keepVideo.IsChecked = Result.KeepVideo;
+        _animArea.Children.Add(_keepVideo);
+        _animArea.Children.Add(Ui.Text("Loops forever. Best for short clips — long videos make very large files.", "sub", "small"));
+        root.Children.Add(_animArea);
+
+        root.Children.Add(_subsArea);
         var subsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 24, Children = { _subs, _embed } };
-        root.Children.Add(subsRow);
+        _subsArea.Children.Add(subsRow);
         _useLangList = info != null && !playlist && !info.IsDirectFile && (info.SubtitleLangs.Count + info.AutoSubtitleLangs.Count) > 0;
         if (_useLangList)
         {
@@ -82,7 +94,7 @@ public class OptionsDialog : Dialog
             foreach (var l in info.AutoSubtitleLangs.Where(l => !info.SubtitleLangs.Contains(l))) AddLang(l + " (auto)", l, false);
             if (!_langBoxes.Any(c => c.IsChecked == true) && _langBoxes.Count > 0)
                 (_langBoxes.FirstOrDefault(c => ((string)c.Tag!).StartsWith("en")) ?? _langBoxes[0]).IsChecked = true;
-            root.Children.Add(new Border
+            _subsArea.Children.Add(new Border
             {
                 Classes = { "panel" }, CornerRadius = new CornerRadius(6), Margin = new Thickness(20, -6, 0, 0), Padding = new Thickness(10, 4), MaxHeight = 96,
                 Child = new ScrollViewer { Content = _subLangs },
@@ -92,7 +104,7 @@ public class OptionsDialog : Dialog
         {
             _subText.Text = string.Join(", ", Result.SubtitleLanguages);
             var hint = Ui.Text(info == null || playlist ? "Used whenever the video has them" : "No subtitles were listed for this video", "sub");
-            root.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(20, -6, 0, 0), Children = { _subText, hint } });
+            _subsArea.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(20, -6, 0, 0), Children = { _subText, hint } });
         }
 
         _folder.Text = Result.Folder;
@@ -131,15 +143,22 @@ public class OptionsDialog : Dialog
             bottom.Children.Add(new TextBlock { Text = "Tip: install the converter in Settings for 1080p and above,\nMP3 and subtitles inside the video.", Classes = { "sub", "small" }, VerticalAlignment = VerticalAlignment.Center });
         root.Children.Add(bottom);
 
+        // A direct file link is saved as it is, unless it's turned into a GIF/WebP.
         if (info?.IsDirectFile == true)
-            foreach (var c in new Control[] { _video, _audio, _format, _quality, _qualityLabel, _subs, _embed, _subText }) c.IsEnabled = false;
+        {
+            _video.Content = "Keep as is";
+            foreach (var c in new Control[] { _audio, _subs, _embed, _subText }) c.IsEnabled = false;
+        }
 
         Content = root;
 
         _video.IsCheckedChanged += (_, _) => KindChanged();
+        _audio.IsCheckedChanged += (_, _) => KindChanged();
+        _anim.IsCheckedChanged += (_, _) => KindChanged();
         _subs.IsCheckedChanged += (_, _) => SubsChanged();
         _format.SelectionChanged += (_, _) => FillQuality();
-        if (Result.Kind == MediaKind.Audio) _audio.IsChecked = true;
+        if (Result.Kind == MediaKind.Audio && info?.IsDirectFile != true) _audio.IsChecked = true;
+        if (Result.Kind == MediaKind.Animation) _anim.IsChecked = true;
         _subs.IsChecked = Result.Subtitles;
         _embed.IsChecked = Result.EmbedSubtitles;
         KindChanged();
@@ -206,13 +225,17 @@ public class OptionsDialog : Dialog
 
     void KindChanged()
     {
-        bool video = _video.IsChecked == true;
-        var list = video ? VideoFormats : AudioFormats;
+        bool video = _video.IsChecked == true, anim = _anim.IsChecked == true, direct = _info?.IsDirectFile == true;
+        var list = anim ? AnimFormats : video ? VideoFormats : AudioFormats;
         _format.ItemsSource = list.Select(f => f.ToUpperInvariant()).ToList();
         int idx = Array.IndexOf(list, Result.Format);
         _format.SelectedIndex = idx >= 0 ? idx : 0;
-        _quality.IsVisible = _qualityLabel.IsVisible = video;
-        _subs.IsEnabled = video && _info?.IsDirectFile != true;
+        _qualityLabel.Text = anim ? "Size" : "Quality";
+        _quality.IsVisible = _qualityLabel.IsVisible = video || anim;
+        _format.IsEnabled = _quality.IsEnabled = _qualityLabel.IsEnabled = !direct || anim;
+        _animArea.IsVisible = anim;
+        _subsArea.IsVisible = !anim;
+        _subs.IsEnabled = video && !direct;
         SubsChanged();
         FillQuality();
     }
@@ -227,9 +250,17 @@ public class OptionsDialog : Dialog
 
     void FillQuality()
     {
-        if (_video.IsChecked != true) return;
         _qualityValues.Clear();
         var items = new List<string>();
+        if (_anim.IsChecked == true)
+        {
+            foreach (var (label, width) in AnimSizes) { items.Add(label); _qualityValues.Add(width); }
+            _quality.ItemsSource = items;
+            int i = _qualityValues.IndexOf(Result.AnimationWidth);
+            _quality.SelectedIndex = i >= 0 ? i : 1;
+            return;
+        }
+        if (_video.IsChecked != true) return;
         var heights = _info?.Heights.Count > 0
             ? _info.Heights.Where(h => h >= 144).Select(h => h >= 4320 ? 4320 : h >= 2160 ? 2160 : h >= 1440 ? 1440 : h >= 1080 ? 1080 : h >= 720 ? 720 : h >= 480 ? 480 : h >= 360 ? 360 : h >= 240 ? 240 : 144).Distinct().ToList()
             : new List<int> { 4320, 2160, 1440, 1080, 720, 480, 360 };
@@ -255,9 +286,19 @@ public class OptionsDialog : Dialog
     async void Accept()
     {
         var o = Result;
-        o.Kind = _audio.IsChecked == true ? MediaKind.Audio : MediaKind.Video;
+        o.Kind = _anim.IsChecked == true ? MediaKind.Animation : _audio.IsChecked == true ? MediaKind.Audio : MediaKind.Video;
         o.Format = (_format.SelectedItem?.ToString() ?? "mp4").ToLowerInvariant();
         if (o.Kind == MediaKind.Video && _quality.SelectedIndex >= 0) o.MaxHeight = _qualityValues[_quality.SelectedIndex];
+        if (o.Kind == MediaKind.Animation)
+        {
+            if (_quality.SelectedIndex >= 0) o.AnimationWidth = _qualityValues[_quality.SelectedIndex];
+            o.KeepVideo = _keepVideo.IsChecked == true;
+            if (!Engine.HasFfmpeg)
+            {
+                await Info(this, Title ?? "", "Making GIF or WebP files needs the free converter (ffmpeg). Open Settings → Download engine and press Install or Add converter first.");
+                return;
+            }
+        }
         o.Subtitles = _subs.IsChecked == true && _subs.IsEnabled;
         o.EmbedSubtitles = _embed.IsChecked == true;
         var langs = _useLangList

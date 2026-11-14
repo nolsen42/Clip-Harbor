@@ -8,6 +8,7 @@ A free, open-source video and audio downloader for Windows, macOS and Linux. No 
 
 - **Paste Link**: copy a link, press the button (or Ctrl+V, ⌘V on a Mac), choose your options and download. You can also drag links onto the window or pass them on the command line.
 - **Video or audio only**: MP4, MKV or WEBM video up to the best quality the site offers (4K/8K included), or MP3, M4A, OPUS, FLAC or WAV audio.
+- **GIF and animated WebP**: turn short clips (like videos on X/Twitter that were meant to be GIFs) into looping GIF or WebP files, in small, medium, large or full size. You can also right-click any finished video and choose **Make a GIF** or **Make an animated WebP**.
 - **Whole playlists and channels**: pick which videos you want, optionally saved into a folder named after the playlist.
 - **Subtitles**: choose languages, saved as files or embedded in the video.
 - **Smart Mode**: save your choices once and every link afterwards downloads in one click.

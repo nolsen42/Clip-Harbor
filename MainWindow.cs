@@ -200,7 +200,7 @@ public class MainWindow : Window
             "active" => i => i.Status is ItemStatus.Downloading or ItemStatus.Queued or ItemStatus.Paused,
             "done" => i => i.Status == ItemStatus.Done,
             "failed" => i => i.Status is ItemStatus.Failed or ItemStatus.Canceled,
-            "video" => i => i.Options.Kind == MediaKind.Video && !i.Direct,
+            "video" => i => i.Options.Kind == MediaKind.Animation || (i.Options.Kind == MediaKind.Video && !i.Direct),
             "audio" => i => i.Options.Kind == MediaKind.Audio,
             "playlists" => i => i.Playlist.Length > 0,
             _ => _ => true,
@@ -452,7 +452,14 @@ public class MainWindow : Window
             Add("Resume / try again", () => { foreach (var i in sel) if (i.Status is ItemStatus.Paused or ItemStatus.Failed or ItemStatus.Canceled) { i.Status = ItemStatus.Queued; i.Message = ""; } Changed(); });
         if (sel.Any(i => i.Status == ItemStatus.Done))
             Add("Download again", () => { foreach (var i in sel.Where(i => i.Status == ItemStatus.Done)) { i.Status = ItemStatus.Queued; i.FilePath = ""; i.Progress = 0; } Changed(); });
-        if (one != null && !one.Direct)
+        if (one?.Status == ItemStatus.Done && IsVideoFile(one.FilePath))
+        {
+            Sep();
+            Add("Make a GIF", () => MakeAnimation(one, "gif"));
+            Add("Make an animated WebP", () => MakeAnimation(one, "webp"));
+            Sep();
+        }
+        if (one != null && !one.Direct && one.SourceFile.Length == 0)
             Add("Change quality or format…", async () =>
             {
                 var d = new OptionsDialog(null, one.Options, "Choices for this download");
@@ -462,6 +469,33 @@ public class MainWindow : Window
         Add("Remove from list", () => _ = Remove(sel, false));
         if (sel.Any(i => File.Exists(i.FilePath))) Add("Remove and delete file", () => _ = Remove(sel, true));
         return m;
+    }
+
+    static readonly string[] VideoExt = { ".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".ts", ".3gp", ".wmv" };
+
+    static bool IsVideoFile(string path) => File.Exists(path) && VideoExt.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    /// <summary>Adds a list entry that turns a finished video into a GIF or WebP next to it.</summary>
+    async void MakeAnimation(DownloadItem src, string format)
+    {
+        if (!Engine.HasFfmpeg)
+        {
+            await Dialog.Info(this, "Make a " + format.ToUpperInvariant(), "This needs the free converter (ffmpeg). Open Settings → Download engine and press Install or Add converter first.");
+            return;
+        }
+        var last = _state.Settings.LastOptions;
+        _state.Items.Add(new DownloadItem
+        {
+            Url = src.Url, Title = src.Title, Uploader = src.Uploader, ThumbnailUrl = src.ThumbnailUrl, DurationSeconds = src.DurationSeconds,
+            SourceFile = src.FilePath,
+            Options = new DownloadOptions
+            {
+                Kind = MediaKind.Animation, Format = format, Folder = Path.GetDirectoryName(src.FilePath) ?? src.Options.Folder,
+                AnimationWidth = last.Kind == MediaKind.Animation ? last.AnimationWidth : 480,
+            },
+        });
+        if (_nav.SelectedKey is "done" or "failed" or "subs" or "audio") Navigate("all");
+        Changed();
     }
 
     void OnKey(object? sender, KeyEventArgs e)
@@ -599,9 +633,16 @@ public class MainWindow : Window
             new DownloadItem { Title = "Private video", Options = o.Clone(), Status = ItemStatus.Failed, Message = "This video is private. Turn on 'Use sign-in from browser' in Settings.", Added = now.AddMinutes(-9) },
         });
         _banner.IsVisible = false;
-        Changed();
         Window? d = null;
-        if (what.Contains("options"))
+        if (what.Contains("gif"))
+        {
+            _state.Items.Add(new DownloadItem { Title = "Cat discovers the cucumber", Uploader = "@funnyclips", DurationSeconds = 9, Options = new DownloadOptions { Kind = MediaKind.Animation, Format = "gif" }, Status = ItemStatus.Downloading, Phase = "converting", Progress = .55, Added = now.AddSeconds(1) });
+            var info = new LinkInfo { Title = "Cat discovers the cucumber", Uploader = "@funnyclips", Duration = 9, Heights = new() { 720, 480, 360 } };
+            d = new OptionsDialog(info, new DownloadOptions { Kind = MediaKind.Animation, Format = "gif", Folder = AppState.DefaultFolder() }, "Download");
+        }
+        Changed();
+        if (d != null) { }
+        else if (what.Contains("options"))
         {
             var info = new LinkInfo { Title = "How to bake sourdough bread at home", Uploader = "Kitchen Notes", Duration = 1265, Heights = new() { 2160, 1440, 1080, 720, 480, 360 }, SizeByHeight = new() { [2160] = 1_400_000_000, [1080] = 310_000_000, [720] = 150_000_000 }, AudioSize = 20_000_000, SubtitleLangs = new() { "en", "es", "fr", "de" } };
             d = new OptionsDialog(info, o, "Download");

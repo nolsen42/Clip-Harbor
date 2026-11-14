@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace ClipHarbor;
 
-public enum MediaKind { Video, Audio }
+public enum MediaKind { Video, Audio, Animation }
 
 public enum ItemStatus { Queued, Downloading, Paused, Done, Failed, Canceled }
 
@@ -20,6 +20,10 @@ public class DownloadOptions
     public List<string> SubtitleLanguages { get; set; } = new() { "en" };
     public string Folder { get; set; } = "";
     public bool PlaylistSubfolder { get; set; } = true;
+    /// <summary>GIF/WebP: largest width in pixels, 0 = keep the video's size.</summary>
+    public int AnimationWidth { get; set; } = 480;
+    /// <summary>GIF/WebP: also keep the downloaded video file.</summary>
+    public bool KeepVideo { get; set; }
 
     public DownloadOptions Clone()
     {
@@ -31,6 +35,7 @@ public class DownloadOptions
     public string Describe()
     {
         if (Kind == MediaKind.Audio) return $"{Format.ToUpperInvariant()} audio";
+        if (Kind == MediaKind.Animation) return $"{Format.ToUpperInvariant()} · {(AnimationWidth > 0 ? AnimationWidth + " px" : "full size")}";
         var q = MaxHeight <= 0 ? "Best" : QualityLabel(MaxHeight);
         return $"{Format.ToUpperInvariant()} · {q}";
     }
@@ -60,6 +65,8 @@ public class DownloadItem
     public long TotalBytes { get; set; }
     public long DoneBytes { get; set; }
     public bool Direct { get; set; }
+    /// <summary>Set when converting a file already on this computer (no download).</summary>
+    public string SourceFile { get; set; } = "";
     public DateTime Added { get; set; } = DateTime.Now;
 
     [JsonIgnore] public double Progress { get; set; }
