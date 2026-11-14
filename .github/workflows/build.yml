@@ -5,6 +5,8 @@ on:
     branches: [main, avalonia-port]
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -95,3 +97,26 @@ jobs:
         with:
           name: ClipHarbor-${{ matrix.name }}
           path: dist/
+
+  # When a release is published on GitHub, attach every build to it.
+  attach-to-release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: ClipHarbor-*
+          path: files
+          merge-multiple: true
+
+      - name: Upload files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mv files/ClipHarbor.exe files/ClipHarbor-windows-x64.exe
+          ls -la files
+          gh release upload "$TAG" files/* --clobber --repo "$GITHUB_REPOSITORY"
