@@ -19,9 +19,9 @@ jobs:
           - { os: macos-latest,   rid: osx-x64,     name: macos-intel }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -84,14 +84,14 @@ jobs:
           perl -e 'alarm 60; exec @ARGV' ./ClipHarbor.app/Contents/MacOS/ClipHarbor --screenshot shot.png
           test -s shot.png
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: screenshot-${{ matrix.name }}
           path: shot.png
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ClipHarbor-${{ matrix.name }}
           path: dist/
