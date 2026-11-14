@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Local test pictures and debugging leftovers
+shots/
+*.png.txt
+
+# Downloaded helper tools (installed at runtime, never committed)
+yt-dlp.exe
+ffmpeg.exe
+ffprobe.exe
+*.part

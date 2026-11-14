@@ -1,0 +1,535 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json;
+
+namespace ClipHarbor;
+
+/// <summary>Result of looking at a link before downloading.</summary>
+public class LinkInfo
+{
+    public string Url = "";
+    public string Title = "";
+    public string Uploader = "";
+    public string Thumbnail = "";
+    public double Duration;
+    public bool IsPlaylist;
+    public bool IsDirectFile;
+    public long DirectSize;
+    public List<int> Heights = new();
+    public Dictionary<int, long> SizeByHeight = new();
+    public long AudioSize;
+    public List<string> SubtitleLangs = new();
+    public List<string> AutoSubtitleLangs = new();
+    public List<PlaylistEntry> Entries = new();
+}
+
+public class PlaylistEntry
+{
+    public string Url = "";
+    public string Id = "";
+    public string Title = "";
+    public string Uploader = "";
+    public string Thumbnail = "";
+    public double Duration;
+    public bool Selected = true;
+}
+
+/// <summary>Finds and drives the open-source download engine (yt-dlp) and ffmpeg.</summary>
+public static class Engine
+{
+    public static AppSettings Settings = new();
+    public static readonly HttpClient Http = CreateHttp();
+
+    static HttpClient CreateHttp()
+    {
+        var h = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true }) { Timeout = TimeSpan.FromMinutes(30) };
+        h.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ClipHarbor/1.0");
+        return h;
+    }
+
+    public static string ToolsDir
+    {
+        get { var d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipHarbor", "tools"); Directory.CreateDirectory(d); return d; }
+    }
+
+    static string? FindTool(string exe, string configured)
+    {
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
+        foreach (var dir in new[] { ToolsDir, AppContext.BaseDirectory })
+        {
+            var p = Path.Combine(dir, exe);
+            if (File.Exists(p)) return p;
+        }
+        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try { var p = Path.Combine(dir.Trim('"'), exe); if (File.Exists(p)) return p; } catch { }
+        }
+        return null;
+    }
+
+    public static string? YtDlp => FindTool("yt-dlp.exe", Settings.EnginePath);
+    public static string? Ffmpeg => FindTool("ffmpeg.exe", Settings.FfmpegPath);
+    public static bool HasEngine => YtDlp != null;
+    public static bool HasFfmpeg => Ffmpeg != null;
+
+    static readonly string[] DirectExt = { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac", ".flv", ".wmv", ".3gp" };
+
+    public static bool LooksDirect(string url)
+    {
+        try
+        {
+            var p = new Uri(url).AbsolutePath.ToLowerInvariant();
+            return DirectExt.Any(p.EndsWith);
+        }
+        catch { return false; }
+    }
+
+    public static bool IsUrl(string s) =>
+        Uri.TryCreate(s.Trim(), UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
+
+    // ---------- process helpers ----------
+
+    static ProcessStartInfo Psi(string exe, IEnumerable<string> args)
+    {
+        var psi = new ProcessStartInfo(exe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        return psi;
+    }
+
+    static List<string> CommonArgs()
+    {
+        var a = new List<string> { "--encoding", "utf-8", "--no-warnings" };
+        if (!string.IsNullOrWhiteSpace(Settings.Proxy)) { a.Add("--proxy"); a.Add(Settings.Proxy.Trim()); }
+        if (!string.IsNullOrWhiteSpace(Settings.CookiesBrowser)) { a.Add("--cookies-from-browser"); a.Add(Settings.CookiesBrowser.Trim().ToLowerInvariant()); }
+        var ff = Ffmpeg;
+        if (ff != null) { a.Add("--ffmpeg-location"); a.Add(Path.GetDirectoryName(ff)!); }
+        return a;
+    }
+
+    static async Task<(int code, string stdout, string stderr)> RunAsync(IEnumerable<string> args, CancellationToken ct)
+    {
+        var exe = YtDlp ?? throw new InvalidOperationException("The download engine isn't installed yet.");
+        using var p = Process.Start(Psi(exe, args))!;
+        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
+        var o = p.StandardOutput.ReadToEndAsync();
+        var e = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        ct.ThrowIfCancellationRequested();
+        return (p.ExitCode, await o, await e);
+    }
+
+    static string CleanError(string stderr)
+    {
+        var lines = stderr.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        var err = lines.LastOrDefault(l => l.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase)) ?? lines.LastOrDefault() ?? "Unknown error";
+        if (err.StartsWith("ERROR:")) err = err[6..].Trim();
+        return err.Length > 300 ? err[..300] + "…" : err;
+    }
+
+    // ---------- link analysis ----------
+
+    public static async Task<LinkInfo> AnalyzeAsync(string url, CancellationToken ct, int playlistLimit = 0)
+    {
+        url = url.Trim();
+        if (!HasEngine || LooksDirect(url))
+        {
+            if (!HasEngine && !LooksDirect(url))
+                throw new InvalidOperationException("ENGINE_MISSING");
+            return await AnalyzeDirectAsync(url, ct);
+        }
+
+        var args = CommonArgs();
+        args.AddRange(new[] { "-J", "--flat-playlist" });
+        if (playlistLimit > 0) { args.Add("--playlist-end"); args.Add(playlistLimit.ToString()); }
+        args.Add(url);
+        var (code, stdout, stderr) = await RunAsync(args, ct);
+        if (code != 0 || string.IsNullOrWhiteSpace(stdout))
+            throw new InvalidOperationException(CleanError(stderr));
+
+        using var doc = JsonDocument.Parse(stdout);
+        var r = doc.RootElement;
+        var info = new LinkInfo
+        {
+            Url = Str(r, "webpage_url") is { Length: > 0 } wu ? wu : url,
+            Title = Str(r, "title"),
+            Uploader = Str(r, "uploader") is { Length: > 0 } up ? up : Str(r, "channel"),
+            Thumbnail = PickThumb(r),
+            Duration = Num(r, "duration"),
+        };
+        if (Str(r, "_type") == "playlist" && r.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array)
+        {
+            info.IsPlaylist = true;
+            foreach (var e in entries.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.Object) continue;
+                var id = Str(e, "id");
+                var eu = Str(e, "url");
+                if (string.IsNullOrEmpty(eu)) eu = Str(e, "webpage_url");
+                var ie = Str(e, "ie_key").ToLowerInvariant();
+                if ((ie == "youtube" || (eu.Length == 11 && !eu.Contains('/'))) && id.Length > 0)
+                    eu = "https://www.youtube.com/watch?v=" + id;
+                if (string.IsNullOrEmpty(eu)) continue;
+                var thumb = PickThumb(e);
+                if (thumb.Length == 0 && ie == "youtube" && id.Length > 0) thumb = $"https://i.ytimg.com/vi/{id}/mqdefault.jpg";
+                info.Entries.Add(new PlaylistEntry
+                {
+                    Url = eu,
+                    Id = id.Length > 0 ? id : eu,
+                    Title = Str(e, "title") is { Length: > 0 } t ? t : eu,
+                    Uploader = Str(e, "uploader") is { Length: > 0 } u2 ? u2 : Str(e, "channel"),
+                    Thumbnail = thumb,
+                    Duration = Num(e, "duration"),
+                });
+            }
+            if (info.Thumbnail.Length == 0) info.Thumbnail = info.Entries.FirstOrDefault()?.Thumbnail ?? "";
+            return info;
+        }
+
+        // single video: gather heights, sizes and subtitles
+        long bestAudio = 0;
+        if (r.TryGetProperty("formats", out var fmts) && fmts.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var f in fmts.EnumerateArray())
+            {
+                var vcodec = Str(f, "vcodec");
+                var acodec = Str(f, "acodec");
+                long size = (long)Math.Max(Num(f, "filesize"), Num(f, "filesize_approx"));
+                int h = (int)Num(f, "height");
+                if (h > 0 && vcodec != "none")
+                {
+                    if (!info.Heights.Contains(h)) info.Heights.Add(h);
+                    if (size > 0 && (!info.SizeByHeight.TryGetValue(h, out var cur) || size > cur)) info.SizeByHeight[h] = size;
+                }
+                else if (vcodec == "none" && acodec != "none" && size > bestAudio) bestAudio = size;
+            }
+        }
+        info.AudioSize = bestAudio;
+        info.Heights.Sort((a, b) => b.CompareTo(a));
+        info.SubtitleLangs = Keys(r, "subtitles");
+        info.AutoSubtitleLangs = Keys(r, "automatic_captions").Where(k => !k.Contains('-') || k.Length <= 5).Take(40).ToList();
+        if (string.IsNullOrEmpty(info.Title)) info.Title = url;
+        return info;
+    }
+
+    static async Task<LinkInfo> AnalyzeDirectAsync(string url, CancellationToken ct)
+    {
+        var info = new LinkInfo { Url = url, IsDirectFile = true };
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Head, url);
+            using var resp = await Http.SendAsync(req, ct);
+            info.DirectSize = resp.Content.Headers.ContentLength ?? 0;
+            var cd = resp.Content.Headers.ContentDisposition?.FileNameStar ?? resp.Content.Headers.ContentDisposition?.FileName;
+            if (!string.IsNullOrWhiteSpace(cd)) info.Title = cd.Trim('"');
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { }
+        if (string.IsNullOrEmpty(info.Title))
+        {
+            try { info.Title = Uri.UnescapeDataString(Path.GetFileName(new Uri(url).AbsolutePath)); } catch { }
+            if (string.IsNullOrEmpty(info.Title)) info.Title = "download";
+        }
+        return info;
+    }
+
+    static string Str(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    static double Num(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+
+    static List<string> Keys(JsonElement e, string name)
+    {
+        var l = new List<string>();
+        if (e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Object)
+            foreach (var p in v.EnumerateObject()) if (p.Name != "live_chat") l.Add(p.Name);
+        return l;
+    }
+
+    static string PickThumb(JsonElement e)
+    {
+        var t = Str(e, "thumbnail");
+        if (t.Length > 0) return t;
+        if (e.TryGetProperty("thumbnails", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            string best = ""; double bw = 0;
+            foreach (var th in arr.EnumerateArray())
+            {
+                var u = Str(th, "url"); var w = Num(th, "width");
+                if (u.Length == 0) continue;
+                if (best.Length == 0 || (w > bw && w <= 640)) { best = u; bw = w; }
+            }
+            return best;
+        }
+        return "";
+    }
+
+    // ---------- downloading ----------
+
+    public static List<string> BuildDownloadArgs(DownloadItem it)
+    {
+        var o = it.Options;
+        var s = Settings;
+        var a = CommonArgs();
+        bool ff = HasFfmpeg;
+        a.AddRange(new[] { "--newline", "--no-playlist", "--no-mtime", "--progress", "--no-simulate" });
+        a.AddRange(new[] { "--progress-template", "download:@@P %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s" });
+        a.AddRange(new[] { "--print", "after_move:@@F %(filepath)s" });
+
+        var folder = string.IsNullOrWhiteSpace(o.Folder) ? AppState.DefaultFolder() : o.Folder;
+        if (o.PlaylistSubfolder && !string.IsNullOrWhiteSpace(it.Playlist)) folder = Path.Combine(folder, SafeName(it.Playlist));
+        a.Add("-P"); a.Add(folder);
+        a.Add("-o"); a.Add(string.IsNullOrWhiteSpace(s.FileNameTemplate) ? "%(title)s.%(ext)s" : s.FileNameTemplate);
+        if (!string.IsNullOrWhiteSpace(s.SpeedLimit)) { a.Add("-r"); a.Add(s.SpeedLimit.Trim()); }
+        if (!s.SkipExisting) a.Add("--force-overwrites");
+
+        if (o.Kind == MediaKind.Audio)
+        {
+            if (ff)
+            {
+                a.AddRange(new[] { "-f", "ba/b", "-x", "--audio-format", o.Format, "--audio-quality", "0" });
+            }
+            else
+            {
+                a.AddRange(new[] { "-f", o.Format == "m4a" ? "ba[ext=m4a]/ba/b" : "ba/b" });
+            }
+        }
+        else
+        {
+            string h = o.MaxHeight > 0 ? $"[height<={o.MaxHeight}]" : "";
+            if (ff)
+            {
+                var sort = o.MaxHeight > 0 ? $"res:{o.MaxHeight}" : "res";
+                if (o.Format == "mp4") sort += ",vcodec:h264,ext:mp4:m4a";
+                a.AddRange(new[] { "-f", $"bv*{h}+ba/b{h}/bv*+ba/b", "-S", sort, "--merge-output-format", o.Format });
+                if (o.Format == "mp4") { a.Add("--remux-video"); a.Add("mp4"); }
+            }
+            else
+            {
+                a.AddRange(new[] { "-f", o.Format == "mp4" ? $"b{h}[ext=mp4]/b{h}/b" : $"b{h}/b" });
+            }
+        }
+
+        if (o.Subtitles && o.Kind == MediaKind.Video)
+        {
+            a.AddRange(new[] { "--write-subs", "--write-auto-subs", "--sub-langs", o.SubtitleLanguages.Count > 0 ? string.Join(",", o.SubtitleLanguages) : "en.*" });
+            if (ff) { a.AddRange(new[] { "--convert-subs", "srt" }); if (o.EmbedSubtitles) a.Add("--embed-subs"); }
+        }
+        if (ff && s.EmbedMetadata) a.Add("--embed-metadata");
+        if (ff && s.EmbedThumbnail && (o.Kind == MediaKind.Video ? o.Format is "mp4" or "mkv" : o.Format is "mp3" or "m4a" or "flac" or "opus")) a.Add("--embed-thumbnail");
+        a.Add("--");
+        a.Add(it.Url);
+        return a;
+    }
+
+    public static string SafeName(string s)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        var r = new string(s.Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+        if (r.Length > 120) r = r[..120];
+        return r.Length == 0 ? "download" : r;
+    }
+
+    /// <summary>Runs one download; reports progress through the item fields. Returns when finished.</summary>
+    public static async Task RunDownloadAsync(DownloadItem it, CancellationToken ct)
+    {
+        if (it.Direct || (!HasEngine && LooksDirect(it.Url)))
+        {
+            await DirectDownloadAsync(it, ct);
+            return;
+        }
+        var exe = YtDlp ?? throw new InvalidOperationException("The download engine isn't installed. Open Settings → Engine to install it.");
+        Directory.CreateDirectory(string.IsNullOrWhiteSpace(it.Options.Folder) ? AppState.DefaultFolder() : it.Options.Folder);
+        var psi = Psi(exe, BuildDownloadArgs(it));
+        using var p = Process.Start(psi)!;
+        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
+        var err = new StringBuilder();
+        var errTask = Task.Run(async () =>
+        {
+            string? l;
+            while ((l = await p.StandardError.ReadLineAsync()) != null) lock (err) { err.AppendLine(l); }
+        });
+        int stage = 0; long lastTotal = 0;
+        string? line;
+        while ((line = await p.StandardOutput.ReadLineAsync()) != null)
+        {
+            if (line.StartsWith("@@P "))
+            {
+                var parts = line[4..].Split(' ');
+                long done = ParseL(parts, 0), total = ParseL(parts, 1), est = ParseL(parts, 2);
+                double speed = ParseD(parts, 3), eta = ParseD(parts, 4);
+                if (total <= 0) total = est;
+                if (total > 0 && lastTotal > 0 && Math.Abs(total - lastTotal) > lastTotal / 4 && done < total / 20) stage++;
+                if (total > 0) lastTotal = total;
+                it.DoneBytes = done;
+                if (total > 0) it.TotalBytes = total;
+                it.Progress = total > 0 ? Math.Clamp((double)done / total, 0, 1) : 0;
+                it.Speed = speed; it.Eta = eta > 0 ? eta : -1;
+                it.Phase = stage == 0 ? "" : "audio";
+            }
+            else if (line.StartsWith("@@F "))
+            {
+                it.FilePath = line[4..].Trim();
+            }
+            else if (line.StartsWith("[Merger]") || line.StartsWith("[ExtractAudio]") || line.StartsWith("[VideoRemuxer]") || line.StartsWith("[EmbedSubtitle]"))
+            {
+                it.Phase = "processing"; it.Progress = 1;
+            }
+        }
+        await p.WaitForExitAsync();
+        await errTask;
+        ct.ThrowIfCancellationRequested();
+        if (p.ExitCode != 0)
+        {
+            string e; lock (err) e = err.ToString();
+            throw new InvalidOperationException(CleanError(e));
+        }
+        if (!string.IsNullOrEmpty(it.FilePath) && File.Exists(it.FilePath))
+            it.TotalBytes = new FileInfo(it.FilePath).Length;
+    }
+
+    static long ParseL(string[] p, int i) => i < p.Length && double.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? (long)v : 0;
+    static double ParseD(string[] p, int i) => i < p.Length && double.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+
+    static async Task DirectDownloadAsync(DownloadItem it, CancellationToken ct)
+    {
+        var folder = string.IsNullOrWhiteSpace(it.Options.Folder) ? AppState.DefaultFolder() : it.Options.Folder;
+        Directory.CreateDirectory(folder);
+        var name = SafeName(string.IsNullOrWhiteSpace(it.Title) ? "download" : it.Title);
+        if (!Path.HasExtension(name))
+            try { name += Path.GetExtension(new Uri(it.Url).AbsolutePath); } catch { }
+        var target = string.IsNullOrEmpty(it.FilePath) ? Path.Combine(folder, name) : it.FilePath;
+        var part = target + ".part";
+        long existing = File.Exists(part) ? new FileInfo(part).Length : 0;
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, it.Url);
+        if (existing > 0) req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(existing, null);
+        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        resp.EnsureSuccessStatusCode();
+        bool resumed = existing > 0 && resp.StatusCode == System.Net.HttpStatusCode.PartialContent;
+        if (!resumed) existing = 0;
+        long total = (resp.Content.Headers.ContentLength ?? 0) + existing;
+        it.TotalBytes = total;
+
+        await using (var src = await resp.Content.ReadAsStreamAsync(ct))
+        await using (var dst = new FileStream(part, resumed ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16, true))
+        {
+            var buf = new byte[1 << 16];
+            long done = existing;
+            var sw = Stopwatch.StartNew(); long winBytes = 0; double lastT = 0;
+            long limit = ParseLimit(Settings.SpeedLimit);
+            int n;
+            while ((n = await src.ReadAsync(buf, ct)) > 0)
+            {
+                await dst.WriteAsync(buf.AsMemory(0, n), ct);
+                done += n; winBytes += n;
+                var t = sw.Elapsed.TotalSeconds;
+                if (t - lastT >= 0.5)
+                {
+                    it.Speed = winBytes / (t - lastT); winBytes = 0; lastT = t;
+                    it.Eta = total > 0 && it.Speed > 0 ? (total - done) / it.Speed : -1;
+                }
+                it.DoneBytes = done;
+                it.Progress = total > 0 ? (double)done / total : 0;
+                if (limit > 0)
+                {
+                    var expected = (done - existing) / (double)limit;
+                    if (expected > t) await Task.Delay(TimeSpan.FromSeconds(Math.Min(1, expected - t)), ct);
+                }
+            }
+        }
+        if (File.Exists(target) && !Settings.SkipExisting) File.Delete(target);
+        if (File.Exists(target))
+        {
+            var b = Path.Combine(folder, Path.GetFileNameWithoutExtension(target));
+            var ext = Path.GetExtension(target);
+            int i = 2; while (File.Exists($"{b} ({i}){ext}")) i++;
+            target = $"{b} ({i}){ext}";
+        }
+        File.Move(part, target);
+        it.FilePath = target;
+        it.TotalBytes = new FileInfo(target).Length;
+    }
+
+    static long ParseLimit(string s)
+    {
+        s = (s ?? "").Trim().ToUpperInvariant();
+        if (s.Length == 0) return 0;
+        double mul = 1;
+        if (s.EndsWith("K")) { mul = 1024; s = s[..^1]; }
+        else if (s.EndsWith("M")) { mul = 1024 * 1024; s = s[..^1]; }
+        else if (s.EndsWith("G")) { mul = 1024 * 1024 * 1024; s = s[..^1]; }
+        return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? (long)(v * mul) : 0;
+    }
+
+    // ---------- engine install / update ----------
+
+    public const string EngineUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+    public const string FfmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+
+    public static async Task InstallEngineAsync(IProgress<(string, double)> progress, bool withFfmpeg, CancellationToken ct)
+    {
+        var target = Path.Combine(ToolsDir, "yt-dlp.exe");
+        await FetchAsync(EngineUrl, target + ".part", "Download engine", progress, ct);
+        File.Move(target + ".part", target, true);
+        if (withFfmpeg && !HasFfmpeg)
+        {
+            var zip = Path.Combine(ToolsDir, "ffmpeg.zip");
+            await FetchAsync(FfmpegUrl, zip, "Video converter (ffmpeg)", progress, ct);
+            progress.Report(("Unpacking video converter…", 1));
+            await Task.Run(() =>
+            {
+                using var z = ZipFile.OpenRead(zip);
+                foreach (var e in z.Entries)
+                {
+                    var n = e.Name.ToLowerInvariant();
+                    if (n is "ffmpeg.exe" or "ffprobe.exe") e.ExtractToFile(Path.Combine(ToolsDir, n), true);
+                }
+            }, ct);
+            File.Delete(zip);
+        }
+        progress.Report(("Ready", 1));
+    }
+
+    static async Task FetchAsync(string url, string dest, string label, IProgress<(string, double)> progress, CancellationToken ct)
+    {
+        using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        resp.EnsureSuccessStatusCode();
+        long total = resp.Content.Headers.ContentLength ?? 0;
+        await using var src = await resp.Content.ReadAsStreamAsync(ct);
+        await using var dst = File.Create(dest);
+        var buf = new byte[1 << 16]; long done = 0; int n;
+        while ((n = await src.ReadAsync(buf, ct)) > 0)
+        {
+            await dst.WriteAsync(buf.AsMemory(0, n), ct);
+            done += n;
+            progress.Report(($"{label}: {Fmt.Bytes(done)}{(total > 0 ? " of " + Fmt.Bytes(total) : "")}", total > 0 ? (double)done / total : 0));
+        }
+    }
+
+    public static async Task<string> UpdateEngineAsync(CancellationToken ct)
+    {
+        var (code, o, e) = await RunAsync(new[] { "-U" }, ct);
+        var text = (o + "\n" + e).Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0) ?? "";
+        return code == 0 ? (text.Length > 0 ? text : "Engine is up to date.") : CleanError(e);
+    }
+
+    public static async Task<string> EngineVersionAsync()
+    {
+        if (!HasEngine) return "";
+        try { var (_, o, _) = await RunAsync(new[] { "--version" }, CancellationToken.None); return o.Trim(); }
+        catch { return ""; }
+    }
+}
