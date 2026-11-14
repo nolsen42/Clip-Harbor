@@ -27,8 +27,18 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Releases take their version from the tag (v1.2.0 -> 1.2.0); other builds use the one in ClipHarbor.csproj.
+      - name: Work out the version
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -n "$TAG" ]; then v="${TAG#[vV]}"; else v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj); fi
+          echo "Version: $v"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
       - name: Publish (self-contained, single file)
-        run: dotnet publish -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish --nologo
+        run: dotnet publish -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=${{ env.VERSION }} -o publish --nologo
 
       - name: Package for Windows
         if: runner.os == 'Windows'
@@ -53,6 +63,8 @@ jobs:
           cp publish/ClipHarbor "$APP/Contents/MacOS/"
           chmod +x "$APP/Contents/MacOS/ClipHarbor"
           cp packaging/macos/Info.plist "$APP/Contents/"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
+          plutil -replace CFBundleVersion -string "$VERSION" "$APP/Contents/Info.plist"
           for s in 16 32 128 256 512; do
             sips -z $s $s assets/ClipHarbor.png --out icon.iconset/icon_${s}x${s}.png >/dev/null
             sips -z $((s*2)) $((s*2)) assets/ClipHarbor.png --out icon.iconset/icon_${s}x${s}@2x.png >/dev/null
