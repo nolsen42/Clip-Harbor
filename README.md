@@ -19,15 +19,17 @@ A free, open-source video and audio downloader for Windows, macOS and Linux. No 
 
 ## Download
 
-Ready-made builds are made by GitHub Actions on every update. Open the **Actions** tab, pick the latest **Build** run and download the file for your computer from **Artifacts**:
+Get the latest version from the **[Releases page](../../releases/latest)** and download the file for your computer:
 
 | System | File | How to start it |
 | --- | --- | --- |
-| Windows (64-bit) | `ClipHarbor-windows-x64` | Unzip and run `ClipHarbor.exe`. |
-| Mac with Apple chip (M1 and later) | `ClipHarbor-macos-apple-silicon` | Unzip, then unzip the `.zip` inside and move **ClipHarbor** to Applications. |
-| Mac with Intel chip | `ClipHarbor-macos-intel` | Same as above. |
-| Linux (most PCs) | `ClipHarbor-linux-x64` | Unzip, then `tar -xzf ClipHarbor-linux-x64.tar.gz` and run `ClipHarbor/ClipHarbor`. |
-| Linux on ARM (e.g. Raspberry Pi 4/5) | `ClipHarbor-linux-arm64` | Same as above. |
+| Windows (64-bit) | `ClipHarbor-windows-x64.exe` | Run it. No installation needed. |
+| Mac with Apple chip (M1 and later) | `ClipHarbor-macos-apple-silicon.zip` | Unzip and move **ClipHarbor** to Applications. |
+| Mac with Intel chip | `ClipHarbor-macos-intel.zip` | Same as above. |
+| Linux (most PCs) | `ClipHarbor-linux-x64.tar.gz` | Unpack (`tar -xzf ClipHarbor-linux-x64.tar.gz`) and run `ClipHarbor/ClipHarbor`. |
+| Linux on ARM (e.g. Raspberry Pi 4/5) | `ClipHarbor-linux-arm64.tar.gz` | Same as above. |
+
+Want to try the newest changes before they're released? Every update is also built by GitHub Actions: open the **Actions** tab, pick the latest **Build** run and download your system's file from **Artifacts** (it comes wrapped in an extra `.zip`).
 
 **First start on a Mac:** ClipHarbor isn't signed with a paid Apple developer account, so macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to ClipHarbor. You only need to do this once.
 
