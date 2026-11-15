@@ -27,8 +27,14 @@ public class SettingsDialog : Dialog
     readonly Button _update = Ui.Button("Check for updates");
     CancellationTokenSource? _cts;
 
-    static readonly string[] Browsers = { "", "chrome", "edge", "firefox", "safari", "brave", "opera", "vivaldi", "chromium" };
-    static readonly string[] BrowserNames = { "Don't use", "Chrome", "Edge", "Firefox", "Safari", "Brave", "Opera", "Vivaldi", "Chromium" };
+    // Only browsers that exist on this system. On Windows, Chrome-based browsers lock their sign-ins away
+    // from other programs, so Firefox comes first and the rest are marked.
+    static readonly (string key, string name)[] BrowserList = Platform.IsWindows
+        ? new[] { ("", "Don't use"), ("firefox", "Firefox (recommended)"), ("chrome", "Chrome (may not work)"), ("edge", "Edge (may not work)"), ("brave", "Brave (may not work)"), ("opera", "Opera (may not work)"), ("vivaldi", "Vivaldi (may not work)"), ("chromium", "Chromium (may not work)") }
+        : Platform.IsMac
+        ? new[] { ("", "Don't use"), ("safari", "Safari"), ("chrome", "Chrome"), ("firefox", "Firefox"), ("edge", "Edge"), ("brave", "Brave"), ("opera", "Opera"), ("vivaldi", "Vivaldi"), ("chromium", "Chromium") }
+        : new[] { ("", "Don't use"), ("firefox", "Firefox"), ("chrome", "Chrome"), ("chromium", "Chromium"), ("brave", "Brave"), ("edge", "Edge"), ("opera", "Opera"), ("vivaldi", "Vivaldi") };
+    static readonly string[] Browsers = BrowserList.Select(b => b.key).ToArray();
     const double C = 230;
 
     public SettingsDialog(AppSettings s) : base("Settings")
@@ -64,7 +70,8 @@ public class SettingsDialog : Dialog
         Row("Speed limit", _limit, "e.g. 500K or 2M per second");
         _proxy.Text = s.Proxy;
         Row("Proxy", _proxy);
-        _cookies.ItemsSource = BrowserNames;
+        _cookies.Width = Platform.IsWindows ? 220 : 160;
+        _cookies.ItemsSource = BrowserList.Select(b => b.name).ToList();
         _cookies.SelectedIndex = Math.Max(0, Array.IndexOf(Browsers, s.CookiesBrowser ?? ""));
         Row("Use sign-in from browser", _cookies, "for private or age-restricted videos");
         _thumb.IsChecked = s.EmbedThumbnail; Check(_thumb);
