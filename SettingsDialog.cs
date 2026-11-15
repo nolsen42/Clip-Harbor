@@ -13,7 +13,8 @@ public class SettingsDialog : Dialog
     readonly TextBox _template = new() { Width = 300 };
     readonly CheckBox _skip = new() { Content = "Skip files that are already downloaded" };
     readonly CheckBox _notify = new() { Content = "Show a notice when downloads finish" };
-    readonly TextBox _limit = new() { Width = 120, Watermark = "No limit" };
+    readonly NumericUpDown _limit = new() { Minimum = 0, Maximum = 100000, Width = 140, FormatString = "0.#", Increment = 1 };
+    readonly ComboBox _limitUnit = new() { Width = 90, ItemsSource = new[] { "MB/s", "KB/s" }, SelectedIndex = 0 };
     readonly TextBox _proxy = new() { Width = 300, Watermark = "e.g. http://127.0.0.1:8080" };
     readonly ComboBox _cookies = new() { Width = 160 };
     readonly CheckBox _thumb = new() { Content = "Use the video's thumbnail as the file's cover picture" };
@@ -74,8 +75,13 @@ public class SettingsDialog : Dialog
         _notify.IsChecked = s.NotifyWhenDone; Check(_notify);
 
         Section("Downloading");
-        _limit.Text = s.SpeedLimit;
-        Row("Speed limit", _limit, "e.g. 500K or 2M per second");
+        var (amount, kb) = ReadLimit(s.SpeedLimit);
+        _limitUnit.SelectedIndex = kb ? 1 : 0;
+        _limit.Increment = kb ? 100 : 1;
+        _limit.Value = amount;
+        _limitUnit.SelectionChanged += (_, _) => _limit.Increment = _limitUnit.SelectedIndex == 1 ? 100 : 1;
+        var limitRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _limit, _limitUnit } };
+        Row("Speed limit", limitRow, "for each download · 0 = no limit");
         _proxy.Text = s.Proxy;
         Row("Proxy", _proxy);
         _cookies.Width = Platform.IsWindows ? 220 : 160;
@@ -183,6 +189,23 @@ public class SettingsDialog : Dialog
         _update.IsEnabled = true;
     }
 
+    /// <summary>Reads a saved limit like "500K" or "2M" (older versions let any of these be typed) as an amount and unit.</summary>
+    static (decimal amount, bool kb) ReadLimit(string? text)
+    {
+        var t = (text ?? "").Trim().ToUpperInvariant().Replace("/S", "").Replace("B", "").Replace(" ", "");
+        if (t.Length == 0) return (0, false);
+        char unit = char.IsLetter(t[^1]) ? t[^1] : ' ';
+        if (unit != ' ') t = t[..^1];
+        if (!decimal.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) || v <= 0) return (0, false);
+        return unit switch
+        {
+            'G' => (v * 1024, false),
+            'M' => (v, false),
+            'K' => (v, true),
+            _ => (Math.Max(1, Math.Round(v / 1024)), true), // plain bytes
+        };
+    }
+
     void Save()
     {
         _s.Theme = _theme.SelectedItem?.ToString() ?? "Light";
@@ -190,7 +213,8 @@ public class SettingsDialog : Dialog
         _s.FileNameTemplate = string.IsNullOrWhiteSpace(_template.Text) ? "%(title)s.%(ext)s" : _template.Text.Trim();
         _s.SkipExisting = _skip.IsChecked == true;
         _s.NotifyWhenDone = _notify.IsChecked == true;
-        _s.SpeedLimit = (_limit.Text ?? "").Trim();
+        var amount = Math.Round(_limit.Value ?? 0, 1);
+        _s.SpeedLimit = amount <= 0 ? "" : amount.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + (_limitUnit.SelectedIndex == 1 ? "K" : "M");
         _s.Proxy = (_proxy.Text ?? "").Trim();
         _s.CookiesBrowser = Browsers[Math.Max(0, _cookies.SelectedIndex)];
         _s.EmbedThumbnail = _thumb.IsChecked == true;
