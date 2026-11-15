@@ -4,12 +4,61 @@ on:
   push:
     branches: [main, avalonia-port]
   pull_request:
-  workflow_dispatch:
   release:
     types: [published]
+  # Actions tab → Build → Run workflow. Pick "patch", "minor" or "major" to publish a new release
+  # in one go: the version is worked out from the last tag, and the release notes from the commits.
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release? patch = fixes (1.1.0 → 1.1.1), minor = new features (1.1.1 → 1.2.0), major = big changes (1.2.0 → 2.0.0)"
+        type: choice
+        options: ["no", "patch", "minor", "major"]
+        default: "no"
 
 jobs:
+  # Works out the version once for every job.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      release: ${{ steps.v.outputs.release }}
+      new_release: ${{ steps.v.outputs.new_release }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # all tags, to find the last version
+
+      - id: v
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          BUMP: ${{ github.event.inputs.release }}
+        run: |
+          release=false; new=false
+          if [ -n "$TAG" ]; then
+            # A release published by hand on GitHub: its tag is the version (v1.2.0 -> 1.2.0).
+            v="${TAG#[vV]}"; release=true
+          elif [ -n "$BUMP" ] && [ "$BUMP" != "no" ]; then
+            last=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+            last="${last#v}"; last="${last%%-*}"; [ -z "$last" ] && last=0.0.0
+            IFS=. read -r a b c <<< "$last"; a=${a:-0}; b=${b:-0}; c=${c:-0}
+            case "$BUMP" in
+              major) a=$((a + 1)); b=0; c=0 ;;
+              minor) b=$((b + 1)); c=0 ;;
+              *)     c=$((c + 1)) ;;
+            esac
+            v="$a.$b.$c"; TAG="v$v"; release=true; new=true
+            echo "Last release: v$last  ->  new release: $TAG"
+          else
+            # Everyday builds use the version in ClipHarbor.csproj.
+            v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj)
+          fi
+          echo "Version: $v"
+          { echo "version=$v"; echo "tag=$TAG"; echo "release=$release"; echo "new_release=$new"; } >> "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
@@ -20,22 +69,14 @@ jobs:
           - { os: macos-latest,   rid: osx-arm64,   name: macos-apple-silicon }
           - { os: macos-latest,   rid: osx-x64,     name: macos-intel }
     runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-
-      # Releases take their version from the tag (v1.2.0 -> 1.2.0); other builds use the one in ClipHarbor.csproj.
-      - name: Work out the version
-        shell: bash
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [ -n "$TAG" ]; then v="${TAG#[vV]}"; else v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj); fi
-          echo "Version: $v"
-          echo "VERSION=$v" >> "$GITHUB_ENV"
 
       - name: Publish (self-contained, single file)
         run: dotnet publish -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=${{ env.VERSION }} -p:UpdateRepo=${{ github.repository }} -o publish --nologo
@@ -114,16 +155,16 @@ jobs:
   # Chrome uses background.service_worker, Firefox background.scripts; each zip keeps only its own.
   # The copy for the Chrome Web Store is switched off on YouTube (skip-sites.json), which that store doesn't allow.
   browser-extension:
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
       - name: Zip the extension
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          if [ -n "$TAG" ]; then v="${TAG#[vV]}"; else v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj); fi
-          v="${v%%-*}"   # browsers only accept numbers and dots
+          v="${VERSION%%-*}"   # browsers only accept numbers and dots
           mkdir dist store-upload   # (store/ is taken: it holds the listing text and images)
           make() {  # make <zip path> <jq filter> <skip-sites json>
             rm -rf out && cp -r browser-extension out
@@ -143,12 +184,12 @@ jobs:
       # Needs the repository secrets AMO_JWT_ISSUER and AMO_JWT_SECRET (API keys from addons.mozilla.org);
       # without them this step is skipped. A failure here doesn't stop the release.
       - name: Sign the Firefox add-on with Mozilla
-        if: github.event_name == 'release'
+        if: needs.plan.outputs.release == 'true'
         continue-on-error: true
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
           if [ -z "$WEB_EXT_API_KEY" ] || [ -z "$WEB_EXT_API_SECRET" ]; then echo "No Mozilla API keys set; not signing."; exit 0; fi
           rm -rf ff signed && mkdir ff signed-out
@@ -180,25 +221,39 @@ jobs:
           name: ClipHarbor-browser-extension
           path: dist/
 
-  # When a release is published on GitHub, attach every build to it.
-  attach-to-release:
-    if: github.event_name == 'release'
-    needs: [build, browser-extension]
+  # Releases: attach every build. For the Run workflow button, also create the tag and the release.
+  release:
+    if: needs.plan.outputs.release == 'true'
+    needs: [plan, build, browser-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v7
         with:
           pattern: ClipHarbor-*
           path: files
           merge-multiple: true
 
-      - name: Upload files to the release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          NEW: ${{ needs.plan.outputs.new_release }}
         run: |
           mv files/ClipHarbor.exe files/ClipHarbor-windows-x64.exe
           ls -la files
-          gh release upload "$TAG" files/* --clobber --repo "$GITHUB_REPOSITORY"
+          if [ "$NEW" = "true" ]; then
+            # What's new = the commit titles since the last release (the app's updater shows these).
+            last=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+            git log --no-merges --pretty='- %s' ${last:+$last..}HEAD > notes.md
+            [ -s notes.md ] || echo "- Small fixes and improvements" > notes.md
+            cat notes.md
+            gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          else
+            gh release upload "$TAG" files/* --clobber --repo "$GITHUB_REPOSITORY"
+          fi

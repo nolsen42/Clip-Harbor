@@ -94,6 +94,10 @@ dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFil
 
 GitHub Actions (see `.github/workflows/build.yml`) builds all five versions, wraps the Mac ones as a `.app`, and checks that the app starts on each system. It also zips the browser extension, and for releases has Mozilla sign the Firefox copy when the repository secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` hold API keys from [addons.mozilla.org](https://addons.mozilla.org/developers/addon/api/key/).
 
+### Publishing a release
+
+Open the **Actions** tab, pick **Build**, press **Run workflow**, choose **patch** (fixes), **minor** (new features) or **major**, and press the green **Run workflow** button. The build works out the next version from the last release (for example v1.1.0 → v1.1.1), builds everything, writes the release notes from the commit titles since the last release, and publishes the release with all the files attached. Publishing a release by hand on the Releases page still works too.
+
 ### Screenshot option
 
 `ClipHarbor --screenshot out.png` starts the app without taking focus, saves a picture of the window and exits. Automated checks use this option.
