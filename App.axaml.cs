@@ -33,9 +33,16 @@ public partial class App : Application
                 MakeTray();
                 SingleInstance.Listen(lines => Dispatcher.UIThread.Post(() => OnHandOff(lines)));
                 if (state.Settings.StartAtLogin) StartAtLogin.Set(true); // keeps the entry right if the app was moved
-                // macOS: clicking the Dock icon while the window is hidden brings it back.
+                _ = Task.Run(BrowserLink.Register); // clipharbor:// links from the browser open this app
+                // macOS: clicking the Dock icon while the window is hidden brings it back,
+                // and clipharbor:// links arrive here instead of on the command line.
                 if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime act)
-                    act.Activated += (_, e) => { if (e.Kind == ActivationKind.Reopen) _window.ShowFromTray(); };
+                    act.Activated += (_, e) =>
+                    {
+                        if (e.Kind == ActivationKind.Reopen) _window.ShowFromTray();
+                        else if (e is ProtocolActivatedEventArgs { Uri: { } uri } && BrowserLink.IsLink(uri.OriginalString))
+                            Dispatcher.UIThread.Post(() => OnHandOff(new[] { uri.OriginalString }));
+                    };
             }
             if (Program.StartHidden && shot == null) _window.StartInBackground();
             else desktop.MainWindow = _window;
@@ -46,9 +53,9 @@ public partial class App : Application
     void OnHandOff(string[] lines)
     {
         if (_window == null) return;
-        var links = lines.Where(Engine.IsUrl).ToList();
+        var links = lines.Where(l => Engine.IsUrl(l) || BrowserLink.IsLink(l)).ToList();
         if (lines.Contains(SingleInstance.Show) || links.Count > 0) _window.ShowFromTray();
-        if (links.Count > 0) _ = _window.AddLinks(string.Join("\n", links));
+        if (links.Count > 0) _ = _window.HandleIncoming(links);
     }
 
     void MakeTray()

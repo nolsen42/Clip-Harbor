@@ -101,7 +101,7 @@ public class MainWindow : Window
         _subTimer.Start();
         _subTimer.Tick += (_, _) => { if (DateTime.Now - _lastUpdateCheck > TimeSpan.FromHours(24)) _ = CheckForUpdateAsync(manual: false); };
         if (_state.Settings.SubscriptionCheckHours > 0) _ = _subs.AutoCheck();
-        if (_startLinks.Count > 0) _ = AddLinks(string.Join("\n", _startLinks));
+        if (_startLinks.Count > 0) _ = HandleIncoming(_startLinks);
         _ = CheckForUpdateAsync(manual: false);
     }
 
@@ -360,6 +360,33 @@ public class MainWindow : Window
             text = p.Value;
         }
         await AddLinks(text);
+    }
+
+    /// <summary>Links given on the command line, by a second start, or sent from the browser (clipharbor://).</summary>
+    public async Task HandleIncoming(IEnumerable<string> links)
+    {
+        var plain = new List<string>();
+        foreach (var l in links)
+        {
+            if (!BrowserLink.IsLink(l)) { plain.Add(l); continue; }
+            if (!BrowserLink.TryParse(l, out var url, out var gif))
+            {
+                ShowBanner("The browser sent a link ClipHarbor couldn't read.", null, null, true);
+                continue;
+            }
+            if (!gif) { plain.Add(url); continue; }
+            // "Make a GIF": the usual choices, switched to GIF (or the WebP picked last time).
+            var s = _state.Settings;
+            var o = (s.SmartMode ? s.SmartOptions : s.LastOptions).Clone();
+            if (o.Kind != MediaKind.Animation)
+            {
+                o.Kind = MediaKind.Animation;
+                o.Format = s.LastOptions.Kind == MediaKind.Animation ? s.LastOptions.Format : "gif";
+                o.AnimationWidth = s.LastOptions.Kind == MediaKind.Animation ? s.LastOptions.AnimationWidth : 480;
+            }
+            await AnalyzeAndQueue(url, o, quiet: s.SmartMode);
+        }
+        if (plain.Count > 0) await AddLinks(string.Join("\n", plain));
     }
 
     public async Task AddLinks(string text)

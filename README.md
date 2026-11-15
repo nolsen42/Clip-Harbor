@@ -9,6 +9,7 @@ A free, open-source video and audio downloader for Windows, macOS and Linux. No 
 - **Paste Link**: copy a link, press the button (or Ctrl+V, ⌘V on a Mac), choose your options and download. You can also drag links onto the window or pass them on the command line.
 - **Video or audio only**: MP4, MKV or WEBM video up to the best quality the site offers (4K/8K included), or MP3, M4A, OPUS, FLAC or WAV audio.
 - **GIF and animated WebP**: turn short clips (like videos on X/Twitter that were meant to be GIFs) into looping GIF or WebP files, in small, medium, large or full size. You can also right-click any finished video and choose **Make a GIF** or **Make an animated WebP**.
+- **Send from your browser**: right-click a video, a link or an X post and choose **Download with ClipHarbor** or **Make a GIF with ClipHarbor** (see [below](#send-from-your-browser)).
 - **Whole playlists and channels**: pick which videos you want, optionally saved into a folder named after the playlist.
 - **Subtitles**: choose languages, saved as files or embedded in the video.
 - **Smart Mode**: save your choices once and every link afterwards downloads in one click.
@@ -37,6 +38,27 @@ Want to try the newest changes before they're released? Every update is also bui
 **First start on a Mac:** ClipHarbor isn't signed with a paid Apple developer account, so macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to ClipHarbor. You only need to do this once.
 
 **On Linux** the "show a notice when downloads finish" option uses `notify-send`, installing the converter uses `tar` with xz support, and dates are shown in your local format with the `libicu` library. All three come with almost every desktop Linux.
+
+## Send from your browser
+
+The **Send to ClipHarbor** browser extension adds two choices to the right-click menu: **Download with ClipHarbor** and **Make a GIF with ClipHarbor**. Right-click a video, a link to one, or anywhere on a page. On X/Twitter, right-click anywhere on a post (even in your timeline) and that post is sent. The toolbar button sends the page you're on, and **Alt+Shift+D** / **Alt+Shift+G** do the same from the keyboard.
+
+ClipHarbor must have been started at least once, so your computer knows it opens `clipharbor://` links. The first time, the browser asks whether to open ClipHarbor; tick "always allow" to skip that question afterwards. With **Smart Mode** on, the download starts straight away; otherwise you get the usual choices first.
+
+**Installing the extension** (it isn't in the browser stores yet): download `ClipHarbor-browser-extension.zip` from the [Releases page](../../releases/latest) and unzip it.
+
+- **Chrome, Edge, Brave, Vivaldi, Opera:** open the extensions page (`chrome://extensions`), turn on **Developer mode**, press **Load unpacked** and pick the unzipped folder.
+- **Firefox:** open `about:debugging#/runtime/this-firefox`, press **Load Temporary Add-on…** and pick `manifest.json` in the unzipped folder. Firefox removes it again when it restarts, until the extension is published on Firefox Add-ons.
+
+**No extension?** Make a bookmark with this as its address, and click it on a video page:
+
+```
+javascript:location.href='clipharbor://download?url='+encodeURIComponent(location.href)
+```
+
+Use `clipharbor://gif?url=` instead for a GIF.
+
+The extension only works on the page you send, and only when you ask. It doesn't read your browsing or send anything anywhere except to ClipHarbor on your own computer.
 
 ## Download engine
 

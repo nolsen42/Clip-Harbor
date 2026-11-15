@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Send to ClipHarbor",
+  "version": "1.0.0",
+  "description": "Right-click a video, a link or an X post and send it to the ClipHarbor app to download it or turn it into a GIF.",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Download this page with ClipHarbor",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "permissions": ["contextMenus", "activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*", "https://mobile.x.com/*", "https://mobile.twitter.com/*"],
+      "js": ["x-twitter.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "download-page": {
+      "suggested_key": { "default": "Alt+Shift+D" },
+      "description": "Download this page with ClipHarbor"
+    },
+    "gif-page": {
+      "suggested_key": { "default": "Alt+Shift+G" },
+      "description": "Make a GIF from this page with ClipHarbor"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "send-to-clipharbor@clipharbor",
+      "strict_min_version": "121.0"
+    }
+  }
+}

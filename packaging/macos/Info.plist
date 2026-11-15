@@ -24,5 +24,16 @@
   <string>public.app-category.video</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>io.github.clipharbor.link</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>clipharbor</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

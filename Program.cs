@@ -20,7 +20,7 @@ static class Program
             else if (args[i] == StartAtLogin.Flag) StartHidden = true;
             else if (args[i] == Updater.AfterUpdateFlag && i + 1 < args.Length && int.TryParse(args[++i], out var oldPid))
                 Updater.FinishUpdate(oldPid); // the old version is closing; wait for it, then tidy up
-            else if (Engine.IsUrl(args[i])) Links.Add(args[i]);
+            else if (Engine.IsUrl(args[i]) || BrowserLink.IsLink(args[i])) Links.Add(args[i]);
         }
 
         // Already running? Pass the links on (or ask it to show its window) and stop here.

@@ -110,10 +110,31 @@ jobs:
           name: ClipHarbor-${{ matrix.name }}
           path: dist/
 
+  # The "Send to ClipHarbor" browser extension, zipped with the release's version number.
+  browser-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Zip the extension
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -n "$TAG" ]; then v="${TAG#[vV]}"; else v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj); fi
+          v="${v%%-*}"   # browsers only accept numbers and dots
+          jq --arg v "$v" '.version = $v' browser-extension/manifest.json > manifest.tmp && mv manifest.tmp browser-extension/manifest.json
+          mkdir dist
+          (cd browser-extension && zip -r -X ../dist/ClipHarbor-browser-extension.zip .)
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ClipHarbor-browser-extension
+          path: dist/
+
   # When a release is published on GitHub, attach every build to it.
   attach-to-release:
     if: github.event_name == 'release'
-    needs: build
+    needs: [build, browser-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
