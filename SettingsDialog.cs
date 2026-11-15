@@ -19,6 +19,8 @@ public class SettingsDialog : Dialog
     readonly CheckBox _thumb = new() { Content = "Add the cover picture to files" };
     readonly CheckBox _meta = new() { Content = "Add title, artist and date to files" };
     readonly NumericUpDown _subHours = new() { Minimum = 0, Maximum = 168, Width = 120, FormatString = "0", Increment = 1 };
+    readonly CheckBox _background = new() { Content = $"Keep running in the {(Platform.IsMac ? "menu bar" : "system tray")} when I close the window" };
+    readonly CheckBox _login = new() { Content = "Start ClipHarbor when I sign in to this computer (hidden, in the " + (Platform.IsMac ? "menu bar)" : "tray)") };
     readonly TextBlock _engineStatus = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 680 };
     readonly ProgressBar _engineBar = new() { Classes = { "thin" }, Minimum = 0, Maximum = 1, Width = 300, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
     readonly TextBox _enginePath = new() { Width = 450, Watermark = "Found automatically" };
@@ -80,6 +82,9 @@ public class SettingsDialog : Dialog
         Section("Subscriptions");
         _subHours.Value = Math.Clamp(s.SubscriptionCheckHours, 0, 168);
         Row("Check for new videos every", _subHours, "hours (0 = only when I ask)");
+        _background.IsChecked = s.RunInBackground; Check(_background);
+        _login.IsChecked = s.StartAtLogin; Check(_login);
+        root.Children.Add(new TextBlock { Text = "Checks only happen while ClipHarbor is running, so keep it in the tray to get new videos on time.", Classes = { "sub", "small" }, Margin = new Thickness(C, 0, 0, 4), TextWrapping = TextWrapping.Wrap, MaxWidth = 460, HorizontalAlignment = HorizontalAlignment.Left });
 
         Section("Download engine");
         root.Children.Add(_engineStatus);
@@ -163,6 +168,9 @@ public class SettingsDialog : Dialog
         _s.EmbedThumbnail = _thumb.IsChecked == true;
         _s.EmbedMetadata = _meta.IsChecked == true;
         _s.SubscriptionCheckHours = (int)(_subHours.Value ?? 0);
+        _s.RunInBackground = _background.IsChecked == true;
+        _s.StartAtLogin = _login.IsChecked == true;
+        _s.BackgroundAsked = true;
         _s.EnginePath = (_enginePath.Text ?? "").Trim();
         _s.FfmpegPath = (_ffPath.Text ?? "").Trim();
     }

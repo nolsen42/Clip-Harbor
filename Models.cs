@@ -107,6 +107,12 @@ public class AppSettings
     public DownloadOptions SmartOptions { get; set; } = new();
     public DownloadOptions LastOptions { get; set; } = new();
     public bool NotifyWhenDone { get; set; } = true;
+    /// <summary>Closing the window keeps ClipHarbor in the tray while there are subscriptions or downloads.</summary>
+    public bool RunInBackground { get; set; } = true;
+    /// <summary>Start hidden in the tray when the person signs in to their computer.</summary>
+    public bool StartAtLogin { get; set; }
+    /// <summary>The "keep running in the background?" question was answered once.</summary>
+    public bool BackgroundAsked { get; set; }
 }
 
 public class AppState

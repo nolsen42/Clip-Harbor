@@ -139,6 +139,8 @@ public class SubscriptionsView : DockPanel
         _main.Changed(); Rebuild();
     }
 
+    public Task CheckNow() => CheckAll(manual: true);
+
     public async Task AutoCheck()
     {
         var hours = _state.Settings.SubscriptionCheckHours;

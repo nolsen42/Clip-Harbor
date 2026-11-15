@@ -37,12 +37,16 @@ public class MainWindow : Window
     readonly TextBox _search = new() { Watermark = "Search downloads", Width = 240, VerticalAlignment = VerticalAlignment.Center };
     CancellationTokenSource? _analyzeCts;
     Action? _bannerAction;
-    bool _dirty, _closingConfirmed;
+    bool _dirty, _quitting, _workStarted;
+    readonly Action _shutdown;
+    readonly List<string> _startLinks;
 
-    public MainWindow(AppState state, string? screenshotPath, List<string> links)
+    public MainWindow(AppState state, string? screenshotPath, List<string> links, Action shutdown)
     {
         _state = state;
         _shot = screenshotPath;
+        _shutdown = shutdown;
+        _startLinks = links;
         Engine.Settings = state.Settings;
 
         Title = "ClipHarbor — video & audio downloader";
@@ -83,10 +87,56 @@ public class MainWindow : Window
         Opened += (_, _) =>
         {
             if (_shot != null) { _ = ScreenshotAsync(); return; }
-            _subTimer.Start();
-            if (_state.Settings.SubscriptionCheckHours > 0) _ = _subs.AutoCheck();
-            if (links.Count > 0) _ = AddLinks(string.Join("\n", links));
+            StartWork();
         };
+    }
+
+    // ---------------- background (tray) ----------------
+
+    /// <summary>Starts subscription checks and handles links given at start. Runs once, shown or hidden.</summary>
+    void StartWork()
+    {
+        if (_workStarted) return;
+        _workStarted = true;
+        _subTimer.Start();
+        if (_state.Settings.SubscriptionCheckHours > 0) _ = _subs.AutoCheck();
+        if (_startLinks.Count > 0) _ = AddLinks(string.Join("\n", _startLinks));
+    }
+
+    /// <summary>Started at sign-in: work in the tray without showing the window.</summary>
+    public void StartInBackground() => StartWork();
+
+    public void ShowFromTray()
+    {
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    public void CheckSubscriptionsNow() => _ = _subs.CheckNow();
+
+    /// <summary>Whether closing the window should leave ClipHarbor running in the tray.</summary>
+    bool HasBackgroundWork =>
+        (_state.Settings.SubscriptionCheckHours > 0 && _state.Subscriptions.Any(s => s.Enabled))
+        || _running.Count > 0 || _state.Items.Any(i => i.Status == ItemStatus.Queued);
+
+    static string TrayName => Platform.IsMac ? "menu bar" : "system tray";
+
+    /// <summary>Really ends the app: pauses running downloads (they resume next time) and saves.</summary>
+    public async Task QuitAsync()
+    {
+        if (_quitting) return;
+        if (_shot == null && _running.Count > 0)
+        {
+            ShowFromTray();
+            if (!await Dialog.Ask(this, "ClipHarbor", "Downloads are still running. They'll pause and you can resume them next time. Quit now?", "Quit", "Keep downloading")) return;
+        }
+        _quitting = true;
+        foreach (var c in _running.Values) c.Cancel();
+        foreach (var it in _state.Items.Where(i => i.Status == ItemStatus.Downloading)) it.Status = ItemStatus.Paused;
+        if (_shot == null) _state.Save();
+        Close();
+        _shutdown();
     }
 
     // ---------------- layout ----------------
@@ -385,7 +435,13 @@ public class MainWindow : Window
     {
         var d = new SettingsDialog(_state.Settings);
         var ok = await d.ShowDialog<bool?>(this) == true;
-        if (ok) { App.ApplyTheme(_state.Settings.Theme); Changed(); }
+        if (ok)
+        {
+            App.ApplyTheme(_state.Settings.Theme);
+            Changed();
+            if (!StartAtLogin.Set(_state.Settings.StartAtLogin) && _state.Settings.StartAtLogin)
+                await Dialog.Info(this, "Settings", "ClipHarbor couldn't set itself to start when you sign in. Your other settings were saved.");
+        }
         if (Engine.HasEngine && _banner.IsVisible && (_bannerText.Text ?? "").StartsWith("One-time")) _banner.IsVisible = false;
     }
 
@@ -537,6 +593,7 @@ public class MainWindow : Window
         if (!Engine.HasEngine) parts.Add("engine not installed");
         else if (!Engine.HasFfmpeg) parts.Add("converter missing (Settings)");
         _status.Text = string.Join("   ·   ", parts);
+        App.SetTrayText("ClipHarbor — " + parts[0]);
         if (active.Count > 0) RowView.RefreshAll();
         if (_dirty && _shot == null)
         {
@@ -584,17 +641,21 @@ public class MainWindow : Window
 
     async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (_shot == null && _running.Count > 0 && !_closingConfirmed)
+        if (_quitting || _shot != null) return;
+        e.Cancel = true;
+        var s = _state.Settings;
+        if (HasBackgroundWork && !s.BackgroundAsked)
         {
-            e.Cancel = true;
-            if (!await Dialog.Ask(this, "ClipHarbor", "Downloads are still running. They'll pause and you can resume them next time. Quit now?", "Quit", "Keep downloading")) return;
-            _closingConfirmed = true;
-            Close();
-            return;
+            // Ask once; the answer is kept and can be changed in Settings.
+            s.BackgroundAsked = true;
+            s.RunInBackground = await Dialog.Ask(this, "Keep ClipHarbor running?",
+                $"ClipHarbor can keep running in the {TrayName} after you close this window, so it keeps checking your subscriptions and finishing downloads. " +
+                $"Open it again from the icon in the {TrayName}.\n\nYou can change this later in Settings.",
+                "Keep running", "Quit");
+            Changed();
         }
-        foreach (var c in _running.Values) c.Cancel();
-        foreach (var it in _state.Items.Where(i => i.Status == ItemStatus.Downloading)) it.Status = ItemStatus.Paused;
-        if (_shot == null) _state.Save();
+        if (s.RunInBackground && HasBackgroundWork) { Hide(); return; }
+        await QuitAsync();
     }
 
     // ---------------- screenshot mode ----------------
@@ -614,7 +675,9 @@ public class MainWindow : Window
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
         dialog?.Close();
+        _quitting = true;
         Close();
+        _shutdown();
     }
 
     static void Save(Window w, string path)

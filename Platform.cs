@@ -21,7 +21,9 @@ public static class Platform
     {
         get
         {
-            var d = IsMac
+            // CLIPHARBOR_DATA_DIR lets testers run a copy with its own list and settings.
+            var d = Environment.GetEnvironmentVariable("CLIPHARBOR_DATA_DIR") is { Length: > 0 } custom ? custom
+                : IsMac
                 ? Path.Combine(Home, "Library", "Application Support", "ClipHarbor")
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClipHarbor");
             Directory.CreateDirectory(d);
