@@ -16,8 +16,8 @@ public class SettingsDialog : Dialog
     readonly TextBox _limit = new() { Width = 120, Watermark = "No limit" };
     readonly TextBox _proxy = new() { Width = 300, Watermark = "e.g. http://127.0.0.1:8080" };
     readonly ComboBox _cookies = new() { Width = 160 };
-    readonly CheckBox _thumb = new() { Content = "Add the cover picture to files" };
-    readonly CheckBox _meta = new() { Content = "Add title, artist and date to files" };
+    readonly CheckBox _thumb = new() { Content = "Use the video's thumbnail as the file's cover picture" };
+    readonly CheckBox _meta = new() { Content = "Save the title, channel and upload date inside the file" };
     readonly NumericUpDown _subHours = new() { Minimum = 0, Maximum = 168, Width = 120, FormatString = "0", Increment = 1 };
     readonly CheckBox _background = new() { Content = $"Keep running in the {(Platform.IsMac ? "menu bar" : "system tray")} when I close the window" };
     readonly CheckBox _login = new() { Content = "Start ClipHarbor when I sign in to this computer (hidden, in the " + (Platform.IsMac ? "menu bar)" : "tray)") };
@@ -84,6 +84,8 @@ public class SettingsDialog : Dialog
         Row("Use sign-in from browser", _cookies, "for private or age-restricted videos");
         _thumb.IsChecked = s.EmbedThumbnail; Check(_thumb);
         _meta.IsChecked = s.EmbedMetadata; Check(_meta);
+        ToolTip.SetTip(_thumb, "Music players, file managers and phones show it as the file's picture.\nWorks for MP4, MKV, MP3, M4A, FLAC and OPUS.");
+        ToolTip.SetTip(_meta, "Music and video players, and the file's Properties/Get Info, show these details.\nThe channel is saved as the artist.");
 
         Section("Subscriptions");
         _subHours.Value = Math.Clamp(s.SubscriptionCheckHours, 0, 168);
