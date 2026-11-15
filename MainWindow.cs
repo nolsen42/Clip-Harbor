@@ -278,6 +278,12 @@ public class MainWindow : Window
             ShowBanner($"To download from video sites, install the free download engine first (one time, {Engine.InstallSize}).", "Install now", () => _ = InstallEngine(url), true);
             return;
         }
+        catch (SignInNeededException ex)
+        {
+            // Settings first, then try the link again with the new sign-in choice.
+            ShowBanner(ex.Message, "Open Settings", async () => { await OpenSettings(); await AnalyzeAndQueue(url, preset, quiet); }, true);
+            return;
+        }
         catch (Exception ex)
         {
             ShowBanner("Couldn't read that link: " + ex.Message, "Try again", () => _ = AnalyzeAndQueue(url, preset, quiet), true);
