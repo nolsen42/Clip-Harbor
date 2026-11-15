@@ -133,9 +133,41 @@ jobs:
           }
           chrome='del(.background.scripts, .browser_specific_settings)'
           make dist/ClipHarbor-extension-chrome.zip   "$chrome" '[]'
-          make dist/ClipHarbor-extension-firefox.zip  'del(.background.service_worker)' '[]'
+          # Firefox copies installed from the signed .xpi look for newer versions in the latest release's updates.json.
+          export UPDATE_URL="https://github.com/$GITHUB_REPOSITORY/releases/latest/download/updates.json"
+          make dist/ClipHarbor-extension-firefox.zip  'del(.background.service_worker) | .browser_specific_settings.gecko.update_url = env.UPDATE_URL' '[]'
           make store-upload/chrome-web-store.zip      "$chrome" '["youtube.com","youtu.be","youtube-nocookie.com"]'
           ls -la dist store-upload
+
+      # Releases only: Mozilla signs the Firefox add-on (unlisted), so it installs permanently and updates itself.
+      # Needs the repository secrets AMO_JWT_ISSUER and AMO_JWT_SECRET (API keys from addons.mozilla.org);
+      # without them this step is skipped. A failure here doesn't stop the release.
+      - name: Sign the Firefox add-on with Mozilla
+        if: github.event_name == 'release'
+        continue-on-error: true
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$WEB_EXT_API_KEY" ] || [ -z "$WEB_EXT_API_SECRET" ]; then echo "No Mozilla API keys set; not signing."; exit 0; fi
+          rm -rf ff signed && mkdir ff signed-out
+          (cd ff && unzip -q ../dist/ClipHarbor-extension-firefox.zip)
+          npx --yes web-ext@8 sign --channel unlisted --source-dir ff --artifacts-dir signed --approval-timeout 1200000
+          cp "$(ls signed/*.xpi | head -n 1)" signed-out/ClipHarbor-extension-firefox.xpi
+          jq -n \
+            --arg id "$(jq -r .browser_specific_settings.gecko.id ff/manifest.json)" \
+            --arg v "$(jq -r .version ff/manifest.json)" \
+            --arg link "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/ClipHarbor-extension-firefox.xpi" \
+            --arg hash "sha256:$(sha256sum signed-out/ClipHarbor-extension-firefox.xpi | cut -d' ' -f1)" \
+            '{addons: {($id): {updates: [{version: $v, update_link: $link, update_hash: $hash}]}}}' > signed-out/updates.json
+          cat signed-out/updates.json
+
+      - uses: actions/upload-artifact@v6
+        if: hashFiles('signed-out/*.xpi') != ''
+        with:
+          name: ClipHarbor-extension-signed
+          path: signed-out/
 
       # Only for uploading to the Chrome Web Store; not attached to releases.
       - uses: actions/upload-artifact@v6

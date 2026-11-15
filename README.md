@@ -47,7 +47,7 @@ ClipHarbor must have been started at least once, so your computer knows it opens
 
 **Installing the extension:**
 
-- **Firefox (140 or newer):** open **[the signed add-on](https://addons.mozilla.org/firefox/downloads/file/5257675/1194b412d22c462793c9-1.0.6.xpi)** in Firefox and press **Add**. It's signed by Mozilla, so it stays installed.
+- **Firefox (140 or newer):** open **[ClipHarbor-extension-firefox.xpi](../../releases/latest/download/ClipHarbor-extension-firefox.xpi)** in Firefox and press **Add**. It's signed by Mozilla, so it stays installed, and it updates itself when a new version comes out.
 - **Chrome, Edge, Brave, Vivaldi, Opera** (until it's in the Chrome Web Store): download `ClipHarbor-extension-chrome.zip` from the [Releases page](../../releases/latest) and unzip it. Open the extensions page (`chrome://extensions`), turn on **Developer mode**, press **Load unpacked** and pick the unzipped folder.
 
 **No extension?** Make a bookmark with this as its address, and click it on a video page:
@@ -92,7 +92,7 @@ To make a single program file that runs without .NET installed, pick your system
 dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-GitHub Actions (see `.github/workflows/build.yml`) builds all five versions, wraps the Mac ones as a `.app`, and checks that the app starts on each system.
+GitHub Actions (see `.github/workflows/build.yml`) builds all five versions, wraps the Mac ones as a `.app`, and checks that the app starts on each system. It also zips the browser extension, and for releases has Mozilla sign the Firefox copy when the repository secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` hold API keys from [addons.mozilla.org](https://addons.mozilla.org/developers/addon/api/key/).
 
 ### Screenshot option
 
