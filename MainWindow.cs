@@ -115,11 +115,6 @@ public class MainWindow : Window
 
     public void CheckSubscriptionsNow() => _ = _subs.CheckNow();
 
-    /// <summary>Whether closing the window should leave ClipHarbor running in the tray.</summary>
-    bool HasBackgroundWork =>
-        (_state.Settings.SubscriptionCheckHours > 0 && _state.Subscriptions.Any(s => s.Enabled))
-        || _running.Count > 0 || _state.Items.Any(i => i.Status == ItemStatus.Queued);
-
     static string TrayName => Platform.IsMac ? "menu bar" : "system tray";
 
     /// <summary>Really ends the app: pauses running downloads (they resume next time) and saves.</summary>
@@ -644,7 +639,7 @@ public class MainWindow : Window
         if (_quitting || _shot != null) return;
         e.Cancel = true;
         var s = _state.Settings;
-        if (HasBackgroundWork && !s.BackgroundAsked)
+        if (!s.BackgroundAsked)
         {
             // Ask once; the answer is kept and can be changed in Settings.
             s.BackgroundAsked = true;
@@ -654,7 +649,8 @@ public class MainWindow : Window
                 "Keep running", "Quit");
             Changed();
         }
-        if (s.RunInBackground && HasBackgroundWork) { Hide(); return; }
+        // The setting is followed as written: on means closing always goes to the tray.
+        if (s.RunInBackground) { Hide(); return; }
         await QuitAsync();
     }
 
