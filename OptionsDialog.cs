@@ -67,8 +67,10 @@ public class OptionsDialog : Dialog
             DockPanel.SetDock(links, Dock.Right);
             head.Children.Add(links);
             head.Children.Add(Ui.Text($"Videos in this playlist ({info!.Entries.Count})", "bold"));
-            _entries.ItemTemplate = new FuncDataTemplate<PlaylistEntry>((e, _) =>
+            _entries.ItemTemplate = new FuncDataTemplate<PlaylistEntry?>((e, _) =>
             {
+                // The list asks for an empty row while it recycles rows during scrolling.
+                if (e == null) return new CheckBox();
                 var cb = new CheckBox { Content = EntryText(e), IsChecked = e.Selected };
                 cb.IsCheckedChanged += (_, _) => e.Selected = cb.IsChecked == true;
                 return cb;

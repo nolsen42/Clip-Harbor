@@ -279,9 +279,30 @@ public static class Engine
 
     // ---------- link analysis ----------
 
+    /// <summary>
+    /// A YouTube video opened from a Mix (list=RD…) is about that one video: a Mix is an endless,
+    /// made-up-on-the-spot list, so drop it. Real playlists (list=PL…) are kept.
+    /// </summary>
+    public static string WithoutMix(string url)
+    {
+        try
+        {
+            var u = new Uri(url);
+            var host = u.Host.ToLowerInvariant();
+            if (!(host == "youtube.com" || host.EndsWith(".youtube.com"))) return url;
+            var parts = u.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries).ToList();
+            bool hasVideo = parts.Any(p => p.StartsWith("v="));
+            bool mix = parts.Any(p => p.StartsWith("list=RD", StringComparison.Ordinal));
+            if (!hasVideo || !mix) return url;
+            var keep = parts.Where(p => !p.StartsWith("list=") && !p.StartsWith("index=") && !p.StartsWith("start_radio=") && !p.StartsWith("pp=")).ToList();
+            return new UriBuilder(u) { Query = string.Join("&", keep) }.Uri.AbsoluteUri;
+        }
+        catch { return url; }
+    }
+
     public static async Task<LinkInfo> AnalyzeAsync(string url, CancellationToken ct, int playlistLimit = 0)
     {
-        url = Unwrap(url);
+        url = WithoutMix(Unwrap(url));
         if (!HasEngine || LooksDirect(url))
         {
             if (!HasEngine && !LooksDirect(url))
