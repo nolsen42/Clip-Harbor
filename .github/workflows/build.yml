@@ -110,7 +110,9 @@ jobs:
           name: ClipHarbor-${{ matrix.name }}
           path: dist/
 
-  # The "Send to ClipHarbor" browser extension, zipped with the release's version number.
+  # The "Send to ClipHarbor" browser extension, one zip per browser family, with the release's version number.
+  # Chrome uses background.service_worker, Firefox background.scripts; each zip keeps only its own.
+  # The copy for the Chrome Web Store is switched off on YouTube (skip-sites.json), which that store doesn't allow.
   browser-extension:
     runs-on: ubuntu-latest
     steps:
@@ -122,9 +124,24 @@ jobs:
         run: |
           if [ -n "$TAG" ]; then v="${TAG#[vV]}"; else v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ClipHarbor.csproj); fi
           v="${v%%-*}"   # browsers only accept numbers and dots
-          jq --arg v "$v" '.version = $v' browser-extension/manifest.json > manifest.tmp && mv manifest.tmp browser-extension/manifest.json
-          mkdir dist
-          (cd browser-extension && zip -r -X ../dist/ClipHarbor-browser-extension.zip .)
+          mkdir dist store
+          make() {  # make <zip path> <jq filter> <skip-sites json>
+            rm -rf out && cp -r browser-extension out
+            jq --arg v "$v" ".version = \$v | $2" browser-extension/manifest.json > out/manifest.json
+            echo "$3" > out/skip-sites.json
+            (cd out && zip -r -X "../$1" .)
+          }
+          chrome='del(.background.scripts, .browser_specific_settings)'
+          make dist/ClipHarbor-extension-chrome.zip   "$chrome" '[]'
+          make dist/ClipHarbor-extension-firefox.zip  'del(.background.service_worker)' '[]'
+          make store/chrome-web-store.zip             "$chrome" '["youtube.com","youtu.be","youtube-nocookie.com"]'
+          ls -la dist store
+
+      # Only for uploading to the Chrome Web Store; not attached to releases.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: chrome-web-store-upload
+          path: store/
 
       - uses: actions/upload-artifact@v6
         with:

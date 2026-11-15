@@ -810,7 +810,9 @@ public class MainWindow : Window
     Window? Preview(string what)
     {
         if (what.Contains("dark")) { _state.Settings.Theme = "Dark"; App.ApplyTheme("Dark"); }
-        var o = new DownloadOptions { Folder = AppState.DefaultFolder() };
+        // Pictures for publishing can show a neutral folder instead of the real user name.
+        var folder = Environment.GetEnvironmentVariable("CLIPHARBOR_PREVIEW_FOLDER") is { Length: > 0 } pf ? pf : AppState.DefaultFolder();
+        var o = new DownloadOptions { Folder = folder };
         var now = DateTime.Now;
         _state.Items.AddRange(new[]
         {
@@ -826,7 +828,7 @@ public class MainWindow : Window
         {
             _state.Items.Add(new DownloadItem { Title = "Cat discovers the cucumber", Uploader = "@funnyclips", DurationSeconds = 9, Options = new DownloadOptions { Kind = MediaKind.Animation, Format = "gif" }, Status = ItemStatus.Downloading, Phase = "converting", Progress = .55, Added = now.AddSeconds(1) });
             var info = new LinkInfo { Title = "Cat discovers the cucumber", Uploader = "@funnyclips", Duration = 9, Heights = new() { 720, 480, 360 } };
-            d = new OptionsDialog(info, new DownloadOptions { Kind = MediaKind.Animation, Format = "gif", Folder = AppState.DefaultFolder() }, "Download");
+            d = new OptionsDialog(info, new DownloadOptions { Kind = MediaKind.Animation, Format = "gif", Folder = folder }, "Download");
         }
         Changed();
         if (d == null && what.Contains("options"))

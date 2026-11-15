@@ -39,8 +39,34 @@ async function pick(info, tab) {
   return isWeb(tab?.url) ? tab.url : null;
 }
 
+// Sites this build doesn't send (skip-sites.json; the Chrome Web Store build lists YouTube there).
+let skipSites;
+async function skipped(url) {
+  skipSites ??= await fetch(api.runtime.getURL("skip-sites.json")).then((r) => r.json()).catch(() => []);
+  let host;
+  try { host = new URL(url).hostname.toLowerCase(); } catch { return false; }
+  return skipSites.some((s) => host === s || host.endsWith("." + s));
+}
+
+async function say(tab, text) {
+  // A short note on the toolbar button instead of a pop-up.
+  try {
+    await api.action.setBadgeBackgroundColor({ color: "#C0392B", tabId: tab.id });
+    await api.action.setBadgeText({ text: "✕", tabId: tab.id });
+    await api.action.setTitle({ title: text, tabId: tab.id });
+    setTimeout(() => {
+      api.action.setBadgeText({ text: "", tabId: tab.id }).catch(() => {});
+      api.action.setTitle({ title: "Download this page with ClipHarbor", tabId: tab.id }).catch(() => {});
+    }, 8000);
+  } catch {}
+}
+
 async function send(kind, url, tab) {
   if (!url) return;
+  if (await skipped(url) || await skipped(tab?.url)) {
+    await say(tab, "This version of Send to ClipHarbor doesn't work on this site.");
+    return;
+  }
   const link = `clipharbor://${kind}?url=${encodeURIComponent(url)}`;
   try {
     // Opening an app link doesn't leave the page; the browser asks first whether to open ClipHarbor.
