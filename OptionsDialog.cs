@@ -14,6 +14,12 @@ public class OptionsDialog : Dialog
     readonly LinkInfo? _info;
     public DownloadOptions Result;
     public List<PlaylistEntry> ChosenEntries = new();
+    /// <summary>The file name typed for a single link, without its ending; empty means the usual name.</summary>
+    public string FileName = "";
+
+    readonly TextBox _name = new();
+    readonly TextBlock _ext = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), Classes = { "sub" } };
+    string _defaultName = "";
 
     readonly RadioButton _video = new() { Content = "Video", GroupName = "kind", IsChecked = true };
     readonly RadioButton _audio = new() { Content = "Audio only", GroupName = "kind" };
@@ -33,7 +39,7 @@ public class OptionsDialog : Dialog
     readonly CheckBox _subfolder = new() { Content = "Put playlist videos in their own folder", IsChecked = true };
     readonly ListBox _entries = new() { Height = 170, SelectionMode = SelectionMode.Multiple, Classes = { "compact" }, Background = Avalonia.Media.Brushes.Transparent };
     readonly List<int> _qualityValues = new();
-    bool _useLangList;
+    bool _useLangList, _noSubs;
 
     static readonly string[] VideoFormats = { "mp4", "mkv", "webm" };
     static readonly string[] AudioFormats = { "mp3", "m4a", "opus", "flac", "wav" };
@@ -88,6 +94,8 @@ public class OptionsDialog : Dialog
         var subsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 24, Children = { _subs, _embed } };
         _subsArea.Children.Add(subsRow);
         _useLangList = info != null && !playlist && !info.IsDirectFile && (info.SubtitleLangs.Count + info.AutoSubtitleLangs.Count) > 0;
+        // A single video with no subtitles listed (or a direct file): don't offer them at all.
+        _noSubs = info != null && !playlist && !_useLangList;
         if (_useLangList)
         {
             foreach (var l in info!.SubtitleLangs) AddLang(l, l, Result.SubtitleLanguages.Contains(l));
@@ -105,6 +113,18 @@ public class OptionsDialog : Dialog
             _subText.Text = string.Join(", ", Result.SubtitleLanguages);
             var hint = Ui.Text(info == null || playlist ? "Used whenever the video has them" : "No subtitles were listed for this video", "sub");
             _subsArea.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(20, -6, 0, 0), Children = { _subText, hint } });
+        }
+
+        // A single link can be given its own file name.
+        if (info != null && !playlist)
+        {
+            _defaultName = Engine.SafeName(info.Title.Length > 0 ? info.Title : "download");
+            if (info.IsDirectFile) _defaultName = StripMediaExt(_defaultName);
+            _name.Text = _defaultName;
+            var nameRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(_ext, 1);
+            nameRow.Children.AddRange(new Control[] { _name, _ext });
+            root.Children.Add(Row("File name", nameRow, bold: true));
         }
 
         _folder.Text = Result.Folder;
@@ -156,7 +176,7 @@ public class OptionsDialog : Dialog
         _audio.IsCheckedChanged += (_, _) => KindChanged();
         _anim.IsCheckedChanged += (_, _) => KindChanged();
         _subs.IsCheckedChanged += (_, _) => SubsChanged();
-        _format.SelectionChanged += (_, _) => FillQuality();
+        _format.SelectionChanged += (_, _) => { FillQuality(); ShowExt(); };
         if (Result.Kind == MediaKind.Audio && info?.IsDirectFile != true) _audio.IsChecked = true;
         if (Result.Kind == MediaKind.Animation) _anim.IsChecked = true;
         _subs.IsChecked = Result.Subtitles;
@@ -221,6 +241,25 @@ public class OptionsDialog : Dialog
         return g;
     }
 
+    static string StripMediaExt(string name)
+    {
+        var e = Path.GetExtension(name);
+        return e.Length > 0 && Engine.IsMediaExt(e) ? name[..^e.Length] : name;
+    }
+
+    /// <summary>Shows the ending the file will get, next to the name box.</summary>
+    void ShowExt()
+    {
+        string ext;
+        if (_info?.IsDirectFile == true && _anim.IsChecked != true)
+        {
+            ext = Path.GetExtension(_info.Title);
+            if (!Engine.IsMediaExt(ext)) try { ext = Path.GetExtension(new Uri(_info.Url).AbsolutePath); } catch { ext = ""; }
+        }
+        else ext = "." + (_format.SelectedItem?.ToString() ?? "").ToLowerInvariant();
+        _ext.Text = ext.Length > 1 ? ext.ToLowerInvariant() : "";
+    }
+
     static string EntryText(PlaylistEntry e) => e.Duration > 0 ? $"{e.Title}   ({Fmt.Duration(e.Duration)})" : e.Title;
 
     void KindChanged()
@@ -234,10 +273,11 @@ public class OptionsDialog : Dialog
         _quality.IsVisible = _qualityLabel.IsVisible = video || anim;
         _format.IsEnabled = _quality.IsEnabled = _qualityLabel.IsEnabled = !direct || anim;
         _animArea.IsVisible = anim;
-        _subsArea.IsVisible = !anim;
+        _subsArea.IsVisible = !anim && !_noSubs;
         _subs.IsEnabled = video && !direct;
         SubsChanged();
         FillQuality();
+        ShowExt();
     }
 
     void SubsChanged()
@@ -299,18 +339,28 @@ public class OptionsDialog : Dialog
                 return;
             }
         }
-        o.Subtitles = _subs.IsChecked == true && _subs.IsEnabled;
-        o.EmbedSubtitles = _embed.IsChecked == true;
-        var langs = _useLangList
-            ? _langBoxes.Where(c => c.IsChecked == true).Select(c => (string)c.Tag!).ToList()
-            : (_subText.Text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        if (langs.Count > 0) o.SubtitleLanguages = langs;
+        if (!_noSubs) // when hidden, keep the saved subtitle choices for the next video
+        {
+            o.Subtitles = _subs.IsChecked == true && _subs.IsEnabled;
+            o.EmbedSubtitles = _embed.IsChecked == true;
+            var langs = _useLangList
+                ? _langBoxes.Where(c => c.IsChecked == true).Select(c => (string)c.Tag!).ToList()
+                : (_subText.Text ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (langs.Count > 0) o.SubtitleLanguages = langs;
+        }
         var folder = (_folder.Text ?? "").Trim();
         if (folder.Length == 0) folder = AppState.DefaultFolder();
         try { Directory.CreateDirectory(folder); }
         catch { await Info(this, Title ?? "", "That folder can't be used. Please pick another one."); return; }
         o.Folder = folder;
         o.PlaylistSubfolder = _subfolder.IsChecked == true;
+
+        if (_defaultName.Length > 0)
+        {
+            var typed = (_name.Text ?? "").Trim();
+            if (typed.Length > 0 && _ext.Text is { Length: > 0 } x && typed.EndsWith(x, StringComparison.OrdinalIgnoreCase)) typed = typed[..^x.Length].TrimEnd();
+            FileName = typed.Length == 0 || typed == _defaultName ? "" : Engine.SafeName(typed);
+        }
 
         if (_info?.IsPlaylist == true)
         {

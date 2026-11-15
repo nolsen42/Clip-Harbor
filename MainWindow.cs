@@ -406,6 +406,7 @@ public class MainWindow : Window
 
         DownloadOptions opts;
         List<PlaylistEntry> entries;
+        string fileName = "";
         if (preset != null && quiet)
         {
             opts = preset.Clone();
@@ -417,12 +418,13 @@ public class MainWindow : Window
             if (await d.ShowDialog<bool?>(this) != true) return;
             opts = d.Result.Clone();
             entries = d.ChosenEntries;
+            fileName = d.FileName;
             _state.Settings.LastOptions = opts.Clone();
         }
-        Queue(info, opts, entries);
+        Queue(info, opts, entries, fileName: fileName);
     }
 
-    public void Queue(LinkInfo info, DownloadOptions opts, List<PlaylistEntry> entries, string? playlistName = null)
+    public void Queue(LinkInfo info, DownloadOptions opts, List<PlaylistEntry> entries, string? playlistName = null, string fileName = "")
     {
         if (info.IsPlaylist)
         {
@@ -443,8 +445,8 @@ public class MainWindow : Window
         {
             _state.Items.Add(new DownloadItem
             {
-                Url = info.Url, Title = info.Title, Uploader = info.Uploader, ThumbnailUrl = info.Thumbnail, DurationSeconds = info.Duration,
-                Options = opts.Clone(), Direct = info.IsDirectFile, TotalBytes = info.DirectSize, UseSignIn = info.NeedsSignIn,
+                Url = info.Url, Title = fileName.Length > 0 ? fileName : info.Title, Uploader = info.Uploader, ThumbnailUrl = info.Thumbnail, DurationSeconds = info.Duration,
+                Options = opts.Clone(), Direct = info.IsDirectFile, TotalBytes = info.DirectSize, UseSignIn = info.NeedsSignIn, FileName = fileName,
             });
         }
         if (_nav.SelectedKey is "done" or "failed" or "subs") Navigate("all");
@@ -783,6 +785,11 @@ public class MainWindow : Window
         if (d == null && what.Contains("options"))
         {
             var info = new LinkInfo { Title = "How to bake sourdough bread at home", Uploader = "Kitchen Notes", Duration = 1265, Heights = new() { 2160, 1440, 1080, 720, 480, 360 }, SizeByHeight = new() { [2160] = 1_400_000_000, [1080] = 310_000_000, [720] = 150_000_000 }, AudioSize = 20_000_000, SubtitleLangs = new() { "en", "es", "fr", "de" } };
+            d = new OptionsDialog(info, o, "Download");
+        }
+        else if (what.Contains("nosubs"))
+        {
+            var info = new LinkInfo { Title = "Mountain trail timelapse — sunrise to sunset", Uploader = "Sample Channel", Duration = 754, Heights = new() { 1080, 720, 480 } };
             d = new OptionsDialog(info, o, "Download");
         }
         else if (what.Contains("playlist"))

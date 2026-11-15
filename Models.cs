@@ -69,6 +69,8 @@ public class DownloadItem
     public string SourceFile { get; set; } = "";
     /// <summary>The site only allowed this download with the browser sign-in.</summary>
     public bool UseSignIn { get; set; }
+    /// <summary>A file name chosen for this download (without its ending); empty uses the usual name.</summary>
+    public string FileName { get; set; } = "";
     public DateTime Added { get; set; } = DateTime.Now;
 
     [JsonIgnore] public double Progress { get; set; }

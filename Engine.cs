@@ -97,6 +97,8 @@ public static class Engine
 
     static readonly string[] DirectExt = { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac", ".flv", ".wmv", ".3gp", ".gif" };
 
+    public static bool IsMediaExt(string ext) => DirectExt.Contains(ext.ToLowerInvariant());
+
     /// <summary>Some sites show a file inside their own viewer page (e.g. reddit.com/media?url=...).
     /// Returns the address of the file itself so it can be downloaded directly.</summary>
     public static string Unwrap(string url)
@@ -431,7 +433,9 @@ public static class Engine
         var folder = string.IsNullOrWhiteSpace(o.Folder) ? AppState.DefaultFolder() : o.Folder;
         if (o.PlaylistSubfolder && !string.IsNullOrWhiteSpace(it.Playlist)) folder = Path.Combine(folder, SafeName(it.Playlist));
         a.Add("-P"); a.Add(folder);
-        a.Add("-o"); a.Add(string.IsNullOrWhiteSpace(s.FileNameTemplate) ? "%(title)s.%(ext)s" : s.FileNameTemplate);
+        a.Add("-o");
+        if (it.FileName.Length > 0) a.Add(SafeName(it.FileName).Replace("%", "%%") + ".%(ext)s"); // a name typed for this download
+        else a.Add(string.IsNullOrWhiteSpace(s.FileNameTemplate) ? "%(title)s.%(ext)s" : s.FileNameTemplate);
         if (!string.IsNullOrWhiteSpace(s.SpeedLimit)) { a.Add("-r"); a.Add(s.SpeedLimit.Trim()); }
         if (!s.SkipExisting) a.Add("--force-overwrites");
 
@@ -656,8 +660,10 @@ public static class Engine
         Directory.CreateDirectory(folder);
         var name = SafeName(string.IsNullOrWhiteSpace(it.Title) ? "download" : it.Title);
         // "Trailer v1.2" has a dot but no real file type, so only trust known media endings.
-        if (!DirectExt.Contains(Path.GetExtension(name).ToLowerInvariant()))
-            try { name += Path.GetExtension(new Uri(it.Url).AbsolutePath); } catch { }
+        var ending = IsMediaExt(Path.GetExtension(name)) ? Path.GetExtension(name) : "";
+        if (ending.Length == 0) try { ending = Path.GetExtension(new Uri(it.Url).AbsolutePath); } catch { }
+        if (it.FileName.Length > 0) name = SafeName(it.FileName) + ending;
+        else if (!IsMediaExt(Path.GetExtension(name))) name += ending;
         var target = string.IsNullOrEmpty(it.FilePath) ? Path.Combine(folder, name) : it.FilePath;
         if (Settings.SkipExisting && File.Exists(target) && !File.Exists(target + ".part"))
         {
