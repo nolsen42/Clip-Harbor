@@ -61,7 +61,7 @@ public class MainWindow : Window
 
         _list.Source = state.Items;
         _list.EmptyTitle = "Copy a video link, then press Paste Link";
-        _list.EmptyHint = "Videos, whole playlists, channels, audio and subtitles — as many as you like, in any quality the site offers. No limits, no account.";
+        _list.EmptyHint = DefaultHint;
         _list.ActionClicked += OnRowAction;
         _list.Opened += it => { if (it.Status == ItemStatus.Done) OpenFile(it); };
         _list.MenuRequested += () => BuildMenu().Open(_list.List);
@@ -240,6 +240,7 @@ public class MainWindow : Window
             new NavItem { Header = true, Text = "Library" },
             new NavItem { Key = "video", Text = "Videos", Glyph = Icons.Video },
             new NavItem { Key = "audio", Text = "Audio", Glyph = Icons.Music },
+            new NavItem { Key = "gifs", Text = "GIFs", Glyph = Icons.Image },
             new NavItem { Key = "playlists", Text = "From playlists", Glyph = Icons.Playlist },
             new NavItem { Header = true, Text = "Follow" },
             new NavItem { Key = "subs", Text = "Subscriptions", Glyph = Icons.Star },
@@ -312,8 +313,9 @@ public class MainWindow : Window
             "active" => i => i.Status is ItemStatus.Downloading or ItemStatus.Queued or ItemStatus.Paused,
             "done" => i => i.Status == ItemStatus.Done,
             "failed" => i => i.Status is ItemStatus.Failed or ItemStatus.Canceled,
-            "video" => i => i.Options.Kind == MediaKind.Animation || (i.Options.Kind == MediaKind.Video && !i.Direct),
+            "video" => i => i.Options.Kind == MediaKind.Video && !IsAnimation(i) && (!i.Direct || VideoExt.Contains(FileExt(i))),
             "audio" => i => i.Options.Kind == MediaKind.Audio,
+            "gifs" => IsAnimation,
             "playlists" => i => i.Playlist.Length > 0,
             _ => _ => true,
         };
@@ -323,8 +325,12 @@ public class MainWindow : Window
             "done" => "No finished downloads yet",
             "failed" => "Everything went fine",
             "playlists" => "No playlist downloads yet",
+            "gifs" => "No GIFs yet",
             _ => "Copy a video link, then press Paste Link",
         };
+        _list.EmptyHint = key == "gifs"
+            ? "Choose GIF / WebP when you download a clip, or right-click a finished video and choose Make a GIF."
+            : DefaultHint;
         _list.Rebuild();
         if (subs) _subs.Rebuild();
     }
@@ -598,7 +604,21 @@ public class MainWindow : Window
         return m;
     }
 
+    const string DefaultHint = "Videos, whole playlists, channels, audio and subtitles — as many as you like, in any quality the site offers. No limits, no account.";
+
     static readonly string[] VideoExt = { ".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".ts", ".3gp", ".wmv" };
+
+    /// <summary>The ending of the item's file, or of its link before it's downloaded.</summary>
+    static string FileExt(DownloadItem i)
+    {
+        var p = i.FilePath.Length > 0 ? i.FilePath : i.Url;
+        try { if (p.Contains("://")) p = new Uri(p).AbsolutePath; } catch { }
+        return Path.GetExtension(p).ToLowerInvariant();
+    }
+
+    /// <summary>GIFs and animated WebPs: made by ClipHarbor, or downloaded straight from a .gif/.webp link.</summary>
+    static bool IsAnimation(DownloadItem i) =>
+        i.Options.Kind == MediaKind.Animation || (i.Direct && FileExt(i) is ".gif" or ".webp");
 
     static bool IsVideoFile(string path) => File.Exists(path) && VideoExt.Contains(Path.GetExtension(path).ToLowerInvariant());
 
@@ -621,7 +641,7 @@ public class MainWindow : Window
                 AnimationWidth = last.Kind == MediaKind.Animation ? last.AnimationWidth : 480,
             },
         });
-        if (_nav.SelectedKey is "done" or "failed" or "subs" or "audio") Navigate("all");
+        if (_nav.SelectedKey is "done" or "failed" or "subs" or "audio" or "video") Navigate("all");
         Changed();
     }
 
@@ -800,6 +820,7 @@ public class MainWindow : Window
         }
         else if (what.Contains("settings")) d = new SettingsDialog(_state.Settings);
         else if (what.Contains("subs")) Navigate("subs");
+        else if (what.Contains("gifs")) Navigate("gifs");
         if (d != null) { d.ShowActivated = false; d.Show(this); }
         return d;
     }

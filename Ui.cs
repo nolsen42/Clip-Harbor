@@ -29,7 +29,8 @@ public static class Icons
     public static readonly Geometry Clock = G("M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 7v5l3.5 2");
     public static readonly Geometry Video = G("M3.5 7.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2z M15.5 10.5l5-3v9l-5-3");
     public static readonly Geometry Music = G("M9 17.5V5.5l11-2v12 M9 17.5a2.75 2.75 0 1 1-5.5 0a2.75 2.75 0 1 1 5.5 0z M20 15.5a2.75 2.75 0 1 1-5.5 0a2.75 2.75 0 1 1 5.5 0z");
-    public static readonly Geometry Playlist = G("M4 6h12 M4 11h12 M4 16h7 M15 13.5v7l5.5-3.5z");
+    public static readonly Geometry Image = G("M3.5 6.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z M3.5 16l5-5 4 4 2.5-2.5 5.5 5 M15.5 8.5h.01");
+    public static readonly Geometry Playlist =G("M4 6h12 M4 11h12 M4 16h7 M15 13.5v7l5.5-3.5z");
     public static readonly Geometry Star = G("M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z");
     public static readonly Geometry Trash = G("M4.5 7h15 M10 11v6 M14 11v6 M6.5 7l1 12a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2l1-12 M9.5 7V4h5v3");
     public static readonly Geometry Plus = G("M12 5v14 M5 12h14");
