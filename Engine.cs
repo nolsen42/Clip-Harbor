@@ -16,6 +16,8 @@ public class LinkInfo
     public double Duration;
     public bool IsPlaylist;
     public bool IsDirectFile;
+    /// <summary>The site only answered with the browser sign-in.</summary>
+    public bool NeedsSignIn;
     public long DirectSize;
     public List<int> Heights = new();
     public Dictionary<int, long> SizeByHeight = new();
@@ -126,11 +128,15 @@ public static class Engine
         return psi;
     }
 
-    static List<string> CommonArgs()
+    static bool BrowserChosen => !string.IsNullOrWhiteSpace(Settings.CookiesBrowser);
+
+    /// <summary>Options used on every run. The browser sign-in is only added when asked for, because reading
+    /// it can fail (locked browsers) and most links don't need it.</summary>
+    static List<string> CommonArgs(bool signIn = false)
     {
         var a = new List<string> { "--encoding", "utf-8", "--no-warnings" };
         if (!string.IsNullOrWhiteSpace(Settings.Proxy)) { a.Add("--proxy"); a.Add(Settings.Proxy.Trim()); }
-        if (!string.IsNullOrWhiteSpace(Settings.CookiesBrowser)) { a.Add("--cookies-from-browser"); a.Add(Settings.CookiesBrowser.Trim().ToLowerInvariant()); }
+        if (signIn && BrowserChosen) { a.Add("--cookies-from-browser"); a.Add(Settings.CookiesBrowser.Trim().ToLowerInvariant()); }
         var ff = Ffmpeg;
         if (ff != null) { a.Add("--ffmpeg-location"); a.Add(Path.GetDirectoryName(ff)!); }
         return a;
@@ -148,48 +154,68 @@ public static class Engine
         return (p.ExitCode, await o, await e);
     }
 
-    static string CleanError(string stderr)
+    static string LastError(string stderr)
     {
         var lines = stderr.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
         var err = lines.LastOrDefault(l => l.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase)) ?? lines.LastOrDefault() ?? "Unknown error";
-        if (err.StartsWith("ERROR:")) err = err[6..].Trim();
-        var friendly = Friendly(err);
+        return err.StartsWith("ERROR:") ? err[6..].Trim() : err;
+    }
+
+    static string CleanError(string stderr, bool usedSignIn = false)
+    {
+        var err = LastError(stderr);
+        var friendly = Friendly(err, usedSignIn);
         if (friendly != null) return friendly.Value.message;
         return err.Length > 300 ? err[..300] + "…" : err;
     }
 
-    /// <summary>The error to throw for a failed engine run. A sign-in problem gets its own type so the app can offer Settings.</summary>
-    static Exception Fail(string stderr)
+    /// <summary>The error to throw for a failed engine run. Sign-in problems get their own type so the app can offer Settings.</summary>
+    static Exception Fail(string stderr, bool usedSignIn)
     {
-        var msg = CleanError(stderr);
-        var lines = stderr.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0);
-        bool signIn = lines.Any(l => Friendly(l.StartsWith("ERROR:") ? l[6..].Trim() : l)?.signIn == true);
-        return signIn ? new SignInNeededException(msg) : new InvalidOperationException(msg);
+        var err = LastError(stderr);
+        var friendly = Friendly(err, usedSignIn);
+        if (friendly is { } f && f.problem != SignInProblem.None) return new SignInNeededException(f.message, f.problem);
+        return new InvalidOperationException(CleanError(stderr, usedSignIn));
     }
 
     static string BrowserName(string b) => b.Length == 0 ? "" : char.ToUpperInvariant(b[0]) + b[1..];
 
-    /// <summary>Plain-language versions of the engine's most common problems; signIn = signing in through a browser may fix it.</summary>
-    public static (string message, bool signIn)? Friendly(string err)
+    /// <summary>Plain-language versions of the engine's most common problems.</summary>
+    /// <param name="usedSignIn">Whether this run already used the browser sign-in.</param>
+    public static (string message, SignInProblem problem)? Friendly(string err, bool usedSignIn = false)
     {
-        var browser = Settings.CookiesBrowser ?? "";
+        var browser = (Settings.CookiesBrowser ?? "").Trim().ToLowerInvariant();
         bool chromeFamily = browser is "" or "chrome" or "edge" or "brave" or "opera" or "vivaldi" or "chromium";
         string tip = Platform.IsWindows && chromeFamily ? " On Windows, Firefox works best: Chrome and Edge lock their sign-ins away from other programs." : "";
 
         if ((err.Contains("Could not copy") && err.Contains("cookie database")) || err.Contains("Failed to decrypt") || (err.Contains("could not find") && err.Contains("cookies database")))
-            return ($"ClipHarbor couldn't read your sign-in from {BrowserName(browser)}. Close {BrowserName(browser)} completely and try again, or choose another browser in Settings.{tip}", true);
+            return ($"This link needs you to be signed in, but ClipHarbor couldn't read your sign-in from {BrowserName(browser)}. Close {BrowserName(browser)} completely and try again, or choose another browser in Settings.{tip}", SignInProblem.BrowserUnreadable);
 
         bool x = err.Contains("[twitter]");
-        if (x && (err.Contains("No video could be found") || err.Contains("NSFW") || err.Contains("age-restricted") || err.Contains("log in") || err.Contains("login")))
-            return (browser.Length == 0
-                ? $"X only shows this post to people who are signed in (it's probably marked sensitive). Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to X.{tip}"
-                : $"X still didn't share a video for this post, even with your sign-in from {BrowserName(browser)}. Check that you're signed in to X there and that the post really has a video or GIF.{tip}", true);
+        bool xWantsSignIn = x && (err.Contains("No video could be found") || err.Contains("NSFW") || err.Contains("age-restricted") || err.Contains("log in") || err.Contains("login"));
+        bool siteWantsSignIn = err.Contains("Sign in to confirm your age") || err.Contains("age-restricted") || err.Contains("Private video") || err.Contains("members-only") || err.Contains("Sign in to confirm you");
+        if (!xWantsSignIn && !siteWantsSignIn) return null;
 
-        if (err.Contains("Sign in to confirm your age") || err.Contains("age-restricted") || err.Contains("Private video") || err.Contains("members-only") || err.Contains("Sign in to confirm you"))
-            return (browser.Length == 0
-                ? $"This video needs you to be signed in. Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to the site.{tip}"
-                : $"The site still refused, even with your sign-in from {BrowserName(browser)}. Check that you're signed in there and allowed to watch this video.{tip}", true);
-        return null;
+        string msg = usedSignIn
+            ? (x ? $"X still didn't share a video for this post, even with your sign-in from {BrowserName(browser)}. Check that you're signed in to X there and that the post really has a video or GIF."
+                 : $"The site still refused, even with your sign-in from {BrowserName(browser)}. Check that you're signed in there and allowed to watch this video.")
+            : (x ? $"X only shows this post to people who are signed in (it's probably marked sensitive). Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to X.{tip}"
+                 : $"This video needs you to be signed in. Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to the site.{tip}");
+        return (msg, SignInProblem.SiteWantsSignIn);
+    }
+
+    /// <summary>Runs the engine without sign-in first; if the site says sign-in is needed and a browser is chosen,
+    /// runs it again with the browser's sign-in. Returns the output and whether sign-in was used.</summary>
+    static async Task<(string stdout, bool usedSignIn)> RunWithSignInAsync(Func<bool, List<string>> buildArgs, bool startWithSignIn, CancellationToken ct)
+    {
+        bool signIn = startWithSignIn && BrowserChosen;
+        var (code, o, e) = await RunAsync(buildArgs(signIn), ct);
+        if (code == 0 && !string.IsNullOrWhiteSpace(o)) return (o, signIn);
+        var fail = Fail(e, signIn);
+        if (signIn || !BrowserChosen || fail is not SignInNeededException { Problem: SignInProblem.SiteWantsSignIn }) throw fail;
+        (code, o, e) = await RunAsync(buildArgs(true), ct);
+        if (code == 0 && !string.IsNullOrWhiteSpace(o)) return (o, true);
+        throw Fail(e, true);
     }
 
     // ---------- link analysis ----------
@@ -204,18 +230,21 @@ public static class Engine
             return await AnalyzeDirectAsync(url, ct);
         }
 
-        var args = CommonArgs();
-        args.AddRange(new[] { "-J", "--flat-playlist" });
-        if (playlistLimit > 0) { args.Add("--playlist-end"); args.Add(playlistLimit.ToString()); }
-        args.Add(url);
-        var (code, stdout, stderr) = await RunAsync(args, ct);
-        if (code != 0 || string.IsNullOrWhiteSpace(stdout))
-            throw Fail(stderr);
+        List<string> Args(bool signIn)
+        {
+            var args = CommonArgs(signIn);
+            args.AddRange(new[] { "-J", "--flat-playlist" });
+            if (playlistLimit > 0) { args.Add("--playlist-end"); args.Add(playlistLimit.ToString()); }
+            args.Add(url);
+            return args;
+        }
+        var (stdout, usedSignIn) = await RunWithSignInAsync(Args, false, ct);
 
         using var doc = JsonDocument.Parse(stdout);
         var r = doc.RootElement;
         var info = new LinkInfo
         {
+            NeedsSignIn = usedSignIn,
             Url = Str(r, "webpage_url") is { Length: > 0 } wu ? wu : url,
             Title = Str(r, "title"),
             Uploader = Str(r, "uploader") is { Length: > 0 } up ? up : Str(r, "channel"),
@@ -332,11 +361,11 @@ public static class Engine
 
     // ---------- downloading ----------
 
-    public static List<string> BuildDownloadArgs(DownloadItem it)
+    public static List<string> BuildDownloadArgs(DownloadItem it, bool signIn = false)
     {
         var o = it.Options;
         var s = Settings;
-        var a = CommonArgs();
+        var a = CommonArgs(signIn);
         bool ff = HasFfmpeg;
         a.AddRange(new[] { "--newline", "--no-playlist", "--no-mtime", "--progress", "--no-simulate" });
         a.AddRange(new[] { "--progress-template", "download:@@P %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s" });
@@ -432,11 +461,24 @@ public static class Engine
         }
     }
 
+    /// <summary>Downloads without sign-in unless this item needed it before; if the site asks for sign-in, tries once more with it.</summary>
     static async Task YtDlpDownloadAsync(DownloadItem it, CancellationToken ct)
+    {
+        bool signIn = it.UseSignIn && BrowserChosen;
+        try { await YtDlpOnceAsync(it, signIn, ct); }
+        catch (SignInNeededException e) when (!signIn && BrowserChosen && e.Problem == SignInProblem.SiteWantsSignIn && !ct.IsCancellationRequested)
+        {
+            it.UseSignIn = true;
+            it.Progress = 0; it.Phase = "";
+            await YtDlpOnceAsync(it, true, ct);
+        }
+    }
+
+    static async Task YtDlpOnceAsync(DownloadItem it, bool signIn, CancellationToken ct)
     {
         var exe = YtDlp ?? throw new InvalidOperationException("The download engine isn't installed. Open Settings → Engine to install it.");
         Directory.CreateDirectory(string.IsNullOrWhiteSpace(it.Options.Folder) ? AppState.DefaultFolder() : it.Options.Folder);
-        var psi = Psi(exe, BuildDownloadArgs(it));
+        var psi = Psi(exe, BuildDownloadArgs(it, signIn));
         using var p = Process.Start(psi)!;
         using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
         var err = new StringBuilder();
@@ -478,7 +520,7 @@ public static class Engine
         if (p.ExitCode != 0)
         {
             string e; lock (err) e = err.ToString();
-            throw Fail(e);
+            throw Fail(e, signIn);
         }
         if (!string.IsNullOrEmpty(it.FilePath) && File.Exists(it.FilePath))
             it.TotalBytes = new FileInfo(it.FilePath).Length;
@@ -764,4 +806,9 @@ public static class Engine
 }
 
 /// <summary>The site wants the person to be signed in; signing in through a browser in Settings may fix it.</summary>
-public class SignInNeededException(string message) : InvalidOperationException(message);
+public class SignInNeededException(string message, SignInProblem problem) : InvalidOperationException(message)
+{
+    public SignInProblem Problem { get; } = problem;
+}
+
+public enum SignInProblem { None, SiteWantsSignIn, BrowserUnreadable }

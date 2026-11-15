@@ -322,7 +322,7 @@ public class MainWindow : Window
                 _state.Items.Add(new DownloadItem
                 {
                     Url = e.Url, Title = e.Title, Uploader = e.Uploader.Length > 0 ? e.Uploader : info.Uploader, ThumbnailUrl = e.Thumbnail,
-                    DurationSeconds = e.Duration, Playlist = name, Options = opts.Clone(), Added = t.AddMilliseconds(-(k++)),
+                    DurationSeconds = e.Duration, Playlist = name, Options = opts.Clone(), Added = t.AddMilliseconds(-(k++)), UseSignIn = info.NeedsSignIn,
                 });
             }
             if (_shot == null && _state.Settings.SmartMode) ShowBanner($"Added {entries.Count} videos from “{name}”.", null, null);
@@ -332,7 +332,7 @@ public class MainWindow : Window
             _state.Items.Add(new DownloadItem
             {
                 Url = info.Url, Title = info.Title, Uploader = info.Uploader, ThumbnailUrl = info.Thumbnail, DurationSeconds = info.Duration,
-                Options = opts.Clone(), Direct = info.IsDirectFile, TotalBytes = info.DirectSize,
+                Options = opts.Clone(), Direct = info.IsDirectFile, TotalBytes = info.DirectSize, UseSignIn = info.NeedsSignIn,
             });
         }
         if (_nav.SelectedKey is "done" or "failed" or "subs") Navigate("all");

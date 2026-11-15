@@ -67,6 +67,8 @@ public class DownloadItem
     public bool Direct { get; set; }
     /// <summary>Set when converting a file already on this computer (no download).</summary>
     public string SourceFile { get; set; } = "";
+    /// <summary>The site only allowed this download with the browser sign-in.</summary>
+    public bool UseSignIn { get; set; }
     public DateTime Added { get; set; } = DateTime.Now;
 
     [JsonIgnore] public double Progress { get; set; }
