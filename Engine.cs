@@ -191,17 +191,48 @@ public static class Engine
         if ((err.Contains("Could not copy") && err.Contains("cookie database")) || err.Contains("Failed to decrypt") || (err.Contains("could not find") && err.Contains("cookies database")))
             return ($"This link needs you to be signed in, but ClipHarbor couldn't read your sign-in from {BrowserName(browser)}. Close {BrowserName(browser)} completely and try again, or choose another browser in Settings.{tip}", SignInProblem.BrowserUnreadable);
 
-        bool x = err.Contains("[twitter]");
+        var site = SiteName(err);
+        bool x = site == "X";
         bool xWantsSignIn = x && (err.Contains("No video could be found") || err.Contains("NSFW") || err.Contains("age-restricted") || err.Contains("log in") || err.Contains("login"));
-        bool siteWantsSignIn = err.Contains("Sign in to confirm your age") || err.Contains("age-restricted") || err.Contains("Private video") || err.Contains("members-only") || err.Contains("Sign in to confirm you");
+        // yt-dlp's own hints that signing in is the fix, on any site (Reddit, Instagram, YouTube, ...).
+        string[] signInWords =
+        {
+            "--cookies-from-browser", "--cookies", "authentication is required", "requires authentication", "login required", "Login required",
+            "log in to", "Log in to", "logged-in", "Sign in to confirm", "age-restricted", "Private video", "members-only", "This content isn't available to everyone",
+        };
+        bool siteWantsSignIn = signInWords.Any(err.Contains);
         if (!xWantsSignIn && !siteWantsSignIn) return null;
 
+        string where = site.Length > 0 ? site : "the site";
         string msg = usedSignIn
             ? (x ? $"X still didn't share a video for this post, even with your sign-in from {BrowserName(browser)}. Check that you're signed in to X there and that the post really has a video or GIF."
-                 : $"The site still refused, even with your sign-in from {BrowserName(browser)}. Check that you're signed in there and allowed to watch this video.")
+                 : $"{Cap(where)} still refused, even with your sign-in from {BrowserName(browser)}. Check that you're signed in to {where} there and allowed to see this video.")
             : (x ? $"X only shows this post to people who are signed in (it's probably marked sensitive). Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to X.{tip}"
-                 : $"This video needs you to be signed in. Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to the site.{tip}");
+                 : $"{Cap(where)} only shares this video with people who are signed in. Turn on \"Use sign-in from browser\" in Settings and pick a browser where you're signed in to {where}.{tip}");
         return (msg, SignInProblem.SiteWantsSignIn);
+    }
+
+    static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    /// <summary>The site's name from an engine message like "[Reddit] abc: ..." or "[youtube:tab] ...".</summary>
+    static string SiteName(string err)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(err, @"^\[([^\]:]+)");
+        if (!m.Success) return "";
+        var key = m.Groups[1].Value;
+        return key.ToLowerInvariant() switch
+        {
+            "twitter" => "X",
+            "youtube" => "YouTube",
+            "tiktok" => "TikTok",
+            "instagram" => "Instagram",
+            "facebook" => "Facebook",
+            "reddit" => "Reddit",
+            "twitch" or "twitch.tv" => "Twitch",
+            "vimeo" => "Vimeo",
+            "generic" => "",
+            _ => key,
+        };
     }
 
     /// <summary>Runs the engine without sign-in first; if the site says sign-in is needed and a browser is chosen,
