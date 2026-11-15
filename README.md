@@ -45,10 +45,10 @@ The **Send to ClipHarbor** browser extension adds two choices to the right-click
 
 ClipHarbor must have been started at least once, so your computer knows it opens `clipharbor://` links. The first time, the browser asks whether to open ClipHarbor; tick "always allow" to skip that question afterwards. With **Smart Mode** on, the download starts straight away; otherwise you get the usual choices first.
 
-**Installing the extension by hand** (until it's in the browser stores), from the [Releases page](../../releases/latest):
+**Installing the extension:**
 
-- **Chrome, Edge, Brave, Vivaldi, Opera:** download `ClipHarbor-extension-chrome.zip` and unzip it. Open the extensions page (`chrome://extensions`), turn on **Developer mode**, press **Load unpacked** and pick the unzipped folder.
-- **Firefox (140 or newer):** download `ClipHarbor-extension-firefox.zip` and unzip it. Open `about:debugging#/runtime/this-firefox`, press **Load Temporary Add-on…** and pick `manifest.json` in the unzipped folder. Firefox removes it again when it restarts, until the extension is signed by Mozilla.
+- **Firefox (140 or newer):** open **[the signed add-on](https://addons.mozilla.org/firefox/downloads/file/5257675/1194b412d22c462793c9-1.0.6.xpi)** in Firefox and press **Add**. It's signed by Mozilla, so it stays installed.
+- **Chrome, Edge, Brave, Vivaldi, Opera** (until it's in the Chrome Web Store): download `ClipHarbor-extension-chrome.zip` from the [Releases page](../../releases/latest) and unzip it. Open the extensions page (`chrome://extensions`), turn on **Developer mode**, press **Load unpacked** and pick the unzipped folder.
 
 **No extension?** Make a bookmark with this as its address, and click it on a video page:
 
