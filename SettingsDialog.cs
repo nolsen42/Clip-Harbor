@@ -26,7 +26,13 @@ public class SettingsDialog : Dialog
     readonly TextBox _enginePath = new() { Width = 450, Watermark = "Found automatically" };
     readonly TextBox _ffPath = new() { Width = 450, Watermark = "Found automatically" };
     readonly Button _install = Ui.Button("Install engine", null, "accent");
-    readonly Button _update = Ui.Button("Check for updates");
+    readonly Button _update = Ui.Button("Update engine");
+    readonly CheckBox _autoUpdate = new() { Content = "Check for new versions of ClipHarbor automatically" };
+    readonly Button _checkApp = Ui.Button("Check now");
+    readonly TextBlock _appStatus = new() { Classes = { "sub" }, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 440 };
+
+    /// <summary>A newer ClipHarbor found with "Check now"; the main window offers it after Settings closes.</summary>
+    public UpdateInfo? FoundUpdate { get; private set; }
     CancellationTokenSource? _cts;
 
     // Only browsers that exist on this system. On Windows, Chrome-based browsers lock their sign-ins away
@@ -95,6 +101,26 @@ public class SettingsDialog : Dialog
         _ffPath.Text = s.FfmpegPath; Row($"Converter file ({Platform.Exe("ffmpeg")})", _ffPath);
         _install.Click += async (_, _) => await Install();
         _update.Click += async (_, _) => await UpdateEngine();
+
+        Section("About ClipHarbor");
+        _appStatus.Text = $"Version {Updater.CurrentText}";
+        root.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(0, 0, 0, 10), Children = { _checkApp, _appStatus } });
+        _autoUpdate.IsChecked = s.CheckAppUpdates;
+        root.Children.Add(_autoUpdate);
+        _checkApp.Click += async (_, _) =>
+        {
+            _checkApp.IsEnabled = false;
+            _appStatus.Text = "Checking…";
+            try
+            {
+                FoundUpdate = await Updater.CheckAsync(CancellationToken.None);
+                _appStatus.Text = FoundUpdate == null
+                    ? $"Version {Updater.CurrentText}. You have the latest version."
+                    : $"Version {FoundUpdate.Version.ToString(3)} is available (you have {Updater.CurrentText}). Close Settings and press Update now.";
+            }
+            catch (Exception ex) { _appStatus.Text = "Couldn't check: " + ex.Message; }
+            _checkApp.IsEnabled = true;
+        };
 
         var ok = Ui.Button("Save", null, "accent"); ok.MinWidth = 120; ok.HorizontalContentAlignment = HorizontalAlignment.Center;
         var cancel = Ui.Button("Cancel"); cancel.MinWidth = 100; cancel.HorizontalContentAlignment = HorizontalAlignment.Center;
@@ -171,6 +197,7 @@ public class SettingsDialog : Dialog
         _s.RunInBackground = _background.IsChecked == true;
         _s.StartAtLogin = _login.IsChecked == true;
         _s.BackgroundAsked = true;
+        _s.CheckAppUpdates = _autoUpdate.IsChecked == true;
         _s.EnginePath = (_enginePath.Text ?? "").Trim();
         _s.FfmpegPath = (_ffPath.Text ?? "").Trim();
     }

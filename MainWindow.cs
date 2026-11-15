@@ -99,8 +99,75 @@ public class MainWindow : Window
         if (_workStarted) return;
         _workStarted = true;
         _subTimer.Start();
+        _subTimer.Tick += (_, _) => { if (DateTime.Now - _lastUpdateCheck > TimeSpan.FromHours(24)) _ = CheckForUpdateAsync(manual: false); };
         if (_state.Settings.SubscriptionCheckHours > 0) _ = _subs.AutoCheck();
         if (_startLinks.Count > 0) _ = AddLinks(string.Join("\n", _startLinks));
+        _ = CheckForUpdateAsync(manual: false);
+    }
+
+    // ---------------- app updates ----------------
+
+    UpdateInfo? _update;
+    DateTime _lastUpdateCheck = DateTime.MinValue;
+    bool _updating;
+
+    /// <summary>Looks for a newer release on GitHub. Automatic checks stay quiet unless one is found.</summary>
+    public async Task CheckForUpdateAsync(bool manual)
+    {
+        if (_updating || (!manual && !_state.Settings.CheckAppUpdates)) return;
+        _lastUpdateCheck = DateTime.Now;
+        try
+        {
+            _update = await Updater.CheckAsync(CancellationToken.None);
+            if (_update != null) { if (manual || !_banner.IsVisible) ShowUpdateBanner(); }
+            else if (manual) await Dialog.Info(this, "Updates", $"You have the latest version of ClipHarbor ({Updater.CurrentText}).");
+        }
+        catch (Exception ex)
+        {
+            if (manual) await Dialog.Info(this, "Updates", "Couldn't check for updates: " + ex.Message);
+        }
+    }
+
+    void ShowUpdateBanner()
+    {
+        if (_update is not { } u) return;
+        ShowBanner($"ClipHarbor {u.Version.ToString(3)} is available. You have {Updater.CurrentText}.", "Update now", () => _ = UpdateNowAsync());
+    }
+
+    async Task UpdateNowAsync()
+    {
+        if (_update is not { } u || _updating) return;
+        var exe = Environment.ProcessPath ?? "";
+        var notes = u.Notes.Trim();
+        if (notes.Length > 800) notes = notes[..800].TrimEnd() + "…";
+        bool canInstall = exe.Length > 0 && Updater.CanInstall(u, exe);
+        var text = (notes.Length > 0 ? "What's new:\n" + notes + "\n\n" : "")
+            + (canInstall
+                ? "ClipHarbor will download the update, restart, and carry on. Running downloads pause and continue afterwards."
+                : "ClipHarbor can't replace itself where it's installed, so the download page will open instead.");
+        if (!await Dialog.Ask(this, $"Update to ClipHarbor {u.Version.ToString(3)}", text, canInstall ? "Update" : "Open download page", "Not now")) return;
+        if (!canInstall) { Platform.Open(u.PageUrl); return; }
+
+        _updating = true;
+        _bannerBtn.IsVisible = false;
+        var prog = new Progress<(string text, double frac)>(p => _bannerText.Text = p.text + (p.frac > 0 && p.frac < 1 ? $"  ({p.frac * 100:0}%)" : ""));
+        try
+        {
+            var program = await Updater.InstallAsync(u, exe, prog, CancellationToken.None);
+            // Hand over: save everything, start the new version, and close this one.
+            _quitting = true;
+            foreach (var c in _running.Values) c.Cancel();
+            foreach (var it in _state.Items.Where(i => i.Status == ItemStatus.Downloading)) it.Status = ItemStatus.Queued;
+            _state.Save();
+            Updater.Launch(program);
+            Close();
+            _shutdown();
+        }
+        catch (Exception ex)
+        {
+            _updating = false;
+            ShowBanner("Couldn't update: " + ex.Message, "Open download page", () => Platform.Open(u.PageUrl), true);
+        }
     }
 
     /// <summary>Started at sign-in: work in the tray without showing the window.</summary>
@@ -438,6 +505,7 @@ public class MainWindow : Window
                 await Dialog.Info(this, "Settings", "ClipHarbor couldn't set itself to start when you sign in. Your other settings were saved.");
         }
         if (Engine.HasEngine && _banner.IsVisible && (_bannerText.Text ?? "").StartsWith("One-time")) _banner.IsVisible = false;
+        if (d.FoundUpdate != null) { _update = d.FoundUpdate; ShowUpdateBanner(); }
     }
 
     // ---------------- row actions ----------------

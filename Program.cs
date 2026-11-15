@@ -18,6 +18,8 @@ static class Program
         {
             if (args[i] == "--screenshot" && i + 1 < args.Length) ScreenshotPath = args[++i];
             else if (args[i] == StartAtLogin.Flag) StartHidden = true;
+            else if (args[i] == Updater.AfterUpdateFlag && i + 1 < args.Length && int.TryParse(args[++i], out var oldPid))
+                Updater.FinishUpdate(oldPid); // the old version is closing; wait for it, then tidy up
             else if (Engine.IsUrl(args[i])) Links.Add(args[i]);
         }
 

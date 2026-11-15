@@ -16,7 +16,13 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
+  <!-- Where the app looks for new releases (owner/name on GitHub). The GitHub build sets it to the repository it runs in. -->
+  <PropertyGroup>
+    <UpdateRepo Condition="'$(UpdateRepo)' == ''">nolsen42/ClipHarbor</UpdateRepo>
+  </PropertyGroup>
+
   <ItemGroup>
+    <AssemblyMetadata Include="UpdateRepo" Value="$(UpdateRepo)" />
     <AvaloniaResource Include="assets\ClipHarbor.ico" />
   </ItemGroup>
 

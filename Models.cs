@@ -113,6 +113,8 @@ public class AppSettings
     public bool StartAtLogin { get; set; }
     /// <summary>The "keep running in the background?" question was answered once.</summary>
     public bool BackgroundAsked { get; set; }
+    /// <summary>Look for a newer ClipHarbor on GitHub at start and once a day.</summary>
+    public bool CheckAppUpdates { get; set; } = true;
 }
 
 public class AppState

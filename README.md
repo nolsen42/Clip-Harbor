@@ -30,6 +30,8 @@ Get the latest version from the **[Releases page](../../releases/latest)** and d
 | Linux (most PCs) | `ClipHarbor-linux-x64.tar.gz` | Unpack (`tar -xzf ClipHarbor-linux-x64.tar.gz`) and run `ClipHarbor/ClipHarbor`. |
 | Linux on ARM (e.g. Raspberry Pi 4/5) | `ClipHarbor-linux-arm64.tar.gz` | Same as above. |
 
+**Updates:** ClipHarbor checks this repository's Releases when it starts and once a day. When there's a newer version it shows a banner; press **Update now** to see what's new, and it downloads the update, checks it against the checksum GitHub publishes, and restarts. You can turn the automatic check off, or check by hand, under **Settings → About ClipHarbor**. If ClipHarbor can't replace itself where it's installed (for example in Program Files), it opens the download page instead.
+
 Want to try the newest changes before they're released? Every update is also built by GitHub Actions: open the **Actions** tab, pick the latest **Build** run and download your system's file from **Artifacts** (it comes wrapped in an extra `.zip`).
 
 **First start on a Mac:** ClipHarbor isn't signed with a paid Apple developer account, so macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to ClipHarbor. You only need to do this once.
