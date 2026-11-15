@@ -68,8 +68,28 @@ public static class Engine
         return null;
     }
 
-    public static string? YtDlp => FindTool("yt-dlp", Settings.EnginePath);
-    public static string? Ffmpeg => FindTool("ffmpeg", Settings.FfmpegPath);
+    // Looking for the tools means checking many folders, and the status bar asks several times a second,
+    // so the answer is remembered for a few seconds (and forgotten right after installing).
+    static readonly object ToolLock = new();
+    static string? _ytDlp, _ffmpeg, _ytConfigured, _ffConfigured;
+    static DateTime _toolsFound = DateTime.MinValue;
+
+    static void FindTools()
+    {
+        lock (ToolLock)
+        {
+            if (DateTime.UtcNow - _toolsFound < TimeSpan.FromSeconds(5) && _ytConfigured == Settings.EnginePath && _ffConfigured == Settings.FfmpegPath) return;
+            _ytConfigured = Settings.EnginePath; _ffConfigured = Settings.FfmpegPath;
+            _ytDlp = FindTool("yt-dlp", _ytConfigured);
+            _ffmpeg = FindTool("ffmpeg", _ffConfigured);
+            _toolsFound = DateTime.UtcNow;
+        }
+    }
+
+    public static void ForgetTools() { lock (ToolLock) _toolsFound = DateTime.MinValue; }
+
+    public static string? YtDlp { get { FindTools(); return _ytDlp; } }
+    public static string? Ffmpeg { get { FindTools(); return _ffmpeg; } }
     public static bool HasEngine => YtDlp != null;
     public static bool HasFfmpeg => Ffmpeg != null;
 
@@ -536,9 +556,17 @@ public static class Engine
         var folder = string.IsNullOrWhiteSpace(it.Options.Folder) ? AppState.DefaultFolder() : it.Options.Folder;
         Directory.CreateDirectory(folder);
         var name = SafeName(string.IsNullOrWhiteSpace(it.Title) ? "download" : it.Title);
-        if (!Path.HasExtension(name))
+        // "Trailer v1.2" has a dot but no real file type, so only trust known media endings.
+        if (!DirectExt.Contains(Path.GetExtension(name).ToLowerInvariant()))
             try { name += Path.GetExtension(new Uri(it.Url).AbsolutePath); } catch { }
         var target = string.IsNullOrEmpty(it.FilePath) ? Path.Combine(folder, name) : it.FilePath;
+        if (Settings.SkipExisting && File.Exists(target) && !File.Exists(target + ".part"))
+        {
+            // Already downloaded earlier: use that file instead of fetching it again.
+            it.FilePath = target;
+            it.TotalBytes = new FileInfo(target).Length;
+            return;
+        }
         var part = target + ".part";
         long existing = File.Exists(part) ? new FileInfo(part).Length : 0;
 
@@ -579,7 +607,7 @@ public static class Engine
             }
         }
         if (File.Exists(target) && !Settings.SkipExisting) File.Delete(target);
-        if (File.Exists(target))
+        if (File.Exists(target)) // appeared while downloading: keep both
         {
             var b = Path.Combine(folder, Path.GetFileNameWithoutExtension(target));
             var ext = Path.GetExtension(target);
@@ -623,6 +651,7 @@ public static class Engine
         await FetchAsync(EngineUrl, target + ".part", "Download engine", progress, ct);
         File.Move(target + ".part", target, true);
         Platform.MakeExecutable(target);
+        ForgetTools();
         if (withFfmpeg && !HasFfmpeg)
         {
             const string label = "Video converter (ffmpeg)";
@@ -655,6 +684,7 @@ public static class Engine
                 File.Delete(archive);
             }
         }
+        ForgetTools();
         progress.Report(("Ready", 1));
     }
 

@@ -134,7 +134,12 @@ public class AppState
                 ? JsonSerializer.Deserialize<AppState>(File.ReadAllText(FilePath), Json) ?? new AppState()
                 : new AppState();
         }
-        catch { s = new AppState(); }
+        catch
+        {
+            // Keep a copy of a damaged file instead of overwriting it on the next save.
+            try { File.Copy(FilePath, Path.Combine(DataDir, $"state.damaged-{DateTime.Now:yyyyMMdd-HHmmss}.json"), true); } catch { }
+            s = new AppState();
+        }
 
         foreach (var o in new[] { s.Settings.SmartOptions, s.Settings.LastOptions })
             if (string.IsNullOrWhiteSpace(o.Folder)) o.Folder = DefaultFolder();
@@ -143,19 +148,29 @@ public class AppState
         return s;
     }
 
-    readonly object _saveLock = new();
+    static readonly object WriteLock = new();
 
-    public void Save()
+    /// <summary>The state as text. Call on the UI thread, where the lists are changed, so it's never caught mid-change.</summary>
+    public string Snapshot() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>Writes a snapshot to disk safely (whole file or nothing). Fine to call from a background thread.</summary>
+    public static void Write(string text)
     {
         try
         {
-            string text;
-            lock (_saveLock) text = JsonSerializer.Serialize(this, Json);
-            var tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, text);
-            File.Move(tmp, FilePath, true);
+            lock (WriteLock)
+            {
+                var tmp = FilePath + ".tmp";
+                File.WriteAllText(tmp, text);
+                File.Move(tmp, FilePath, true);
+            }
         }
         catch { /* never crash on save */ }
+    }
+
+    public void Save()
+    {
+        try { Write(Snapshot()); } catch { }
     }
 }
 

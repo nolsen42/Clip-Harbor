@@ -34,7 +34,7 @@ public static class Icons
     public static readonly Geometry Trash = G("M4.5 7h15 M10 11v6 M14 11v6 M6.5 7l1 12a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2l1-12 M9.5 7V4h5v3");
     public static readonly Geometry Plus = G("M12 5v14 M5 12h14");
     public static readonly Geometry Edit = G("M4.5 19.5h4l10-10-4-4-10 10z M13 7l4 4");
-    public static readonly Geometry Clear = G("M4.5 7h15 M6.5 7l1 12a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2l1-12 M9.5 7V4h5v3");
+    public static readonly Geometry Clear = Trash;
 }
 
 /// <summary>A line icon that takes its colour from the text around it.</summary>
@@ -98,7 +98,9 @@ public class Logo : Control
 public static class Thumbs
 {
     static readonly ConcurrentDictionary<string, Bitmap?> Cache = new();
+    static readonly ConcurrentQueue<string> Order = new();
     static readonly SemaphoreSlim Gate = new(4);
+    const int MaxKept = 300; // about 70 MB of pictures at most; older ones are fetched again if needed
     public static event Action? Loaded;
 
     public static Bitmap? Get(string url)
@@ -106,6 +108,8 @@ public static class Thumbs
         if (string.IsNullOrWhiteSpace(url)) return null;
         if (Cache.TryGetValue(url, out var img)) return img;
         Cache[url] = null;
+        Order.Enqueue(url);
+        while (Cache.Count > MaxKept && Order.TryDequeue(out var old)) Cache.TryRemove(old, out _);
         _ = Task.Run(async () =>
         {
             await Gate.WaitAsync();

@@ -538,7 +538,13 @@ public class MainWindow : Window
         else if (!Engine.HasFfmpeg) parts.Add("converter missing (Settings)");
         _status.Text = string.Join("   ·   ", parts);
         if (active.Count > 0) RowView.RefreshAll();
-        if (_dirty && _shot == null) { _dirty = false; var st = _state; _ = Task.Run(st.Save); }
+        if (_dirty && _shot == null)
+        {
+            _dirty = false;
+            string? text = null;
+            try { text = _state.Snapshot(); } catch { _dirty = true; }
+            if (text != null) _ = Task.Run(() => AppState.Write(text));
+        }
     }
 
     void Start(DownloadItem it)
@@ -647,8 +653,7 @@ public class MainWindow : Window
             d = new OptionsDialog(info, new DownloadOptions { Kind = MediaKind.Animation, Format = "gif", Folder = AppState.DefaultFolder() }, "Download");
         }
         Changed();
-        if (d != null) { }
-        else if (what.Contains("options"))
+        if (d == null && what.Contains("options"))
         {
             var info = new LinkInfo { Title = "How to bake sourdough bread at home", Uploader = "Kitchen Notes", Duration = 1265, Heights = new() { 2160, 1440, 1080, 720, 480, 360 }, SizeByHeight = new() { [2160] = 1_400_000_000, [1080] = 310_000_000, [720] = 150_000_000 }, AudioSize = 20_000_000, SubtitleLangs = new() { "en", "es", "fr", "de" } };
             d = new OptionsDialog(info, o, "Download");
