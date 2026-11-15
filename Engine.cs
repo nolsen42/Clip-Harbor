@@ -95,7 +95,33 @@ public static class Engine
     public static bool HasEngine => YtDlp != null;
     public static bool HasFfmpeg => Ffmpeg != null;
 
-    static readonly string[] DirectExt = { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac", ".flv", ".wmv", ".3gp" };
+    static readonly string[] DirectExt = { ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac", ".flv", ".wmv", ".3gp", ".gif" };
+
+    /// <summary>Some sites show a file inside their own viewer page (e.g. reddit.com/media?url=...).
+    /// Returns the address of the file itself so it can be downloaded directly.</summary>
+    public static string Unwrap(string url)
+    {
+        try
+        {
+            var u = new Uri(url.Trim());
+            var host = u.Host.ToLowerInvariant();
+            bool redditViewer = (host == "reddit.com" || host.EndsWith(".reddit.com")) && u.AbsolutePath.TrimEnd('/') == "/media";
+            if (redditViewer)
+            {
+                foreach (var part in u.Query.TrimStart('?').Split('&'))
+                {
+                    var kv = part.Split('=', 2);
+                    if (kv.Length == 2 && kv[0] == "url")
+                    {
+                        var inner = Uri.UnescapeDataString(kv[1].Replace('+', ' '));
+                        if (IsUrl(inner)) return inner;
+                    }
+                }
+            }
+        }
+        catch { }
+        return url.Trim();
+    }
 
     public static bool LooksDirect(string url)
     {
@@ -253,7 +279,7 @@ public static class Engine
 
     public static async Task<LinkInfo> AnalyzeAsync(string url, CancellationToken ct, int playlistLimit = 0)
     {
-        url = url.Trim();
+        url = Unwrap(url);
         if (!HasEngine || LooksDirect(url))
         {
             if (!HasEngine && !LooksDirect(url))
