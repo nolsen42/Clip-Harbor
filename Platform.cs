@@ -109,6 +109,37 @@ public static class Platform
         else Open(dir);
     }
 
+    static string? _timePattern;
+
+    /// <summary>How this computer writes a time: "h:mm tt" (7:24 AM) or "HH:mm" (07:24).
+    /// Windows and Linux settings come with the region format; on a Mac the separate
+    /// "24-hour time" switch is read as well.</summary>
+    public static string TimePattern => _timePattern ??= FindTimePattern();
+
+    static string FindTimePattern()
+    {
+        if (IsMac)
+        {
+            if (MacSetting("AppleICUForce24HourTime") == "1") return "HH:mm";
+            if (MacSetting("AppleICUForce12HourTime") == "1") return "h:mm tt";
+        }
+        return System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortTimePattern;
+    }
+
+    static string? MacSetting(string key)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("defaults") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (var a in new[] { "read", "-g", key }) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi)!;
+            var text = p.StandardOutput.ReadToEnd().Trim();
+            p.WaitForExit(2000);
+            return p.ExitCode == 0 ? text : null;
+        }
+        catch { return null; }
+    }
+
     public static string FileManagerName => IsWindows ? "File Explorer" : IsMac ? "Finder" : "your file manager";
 
     /// <summary>A small system notice. On Windows the taskbar button flashes instead.</summary>

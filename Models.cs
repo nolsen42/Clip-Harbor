@@ -193,6 +193,15 @@ public static class Fmt
         return i == 0 ? $"{b:0} {u[i]}" : $"{b:0.#} {u[i]}";
     }
 
+    /// <summary>A short date and time the way this computer shows them, e.g. "Nov 15, 7:24 AM" or "15 Nov, 07:24".</summary>
+    public static string When(DateTime d)
+    {
+        var f = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat;
+        // Month and day in the local order, with a short month name ("MMMM d" -> "MMM d").
+        var day = f.MonthDayPattern.Replace("MMMM", "MMM");
+        return $"{d.ToString(day)}, {d.ToString(Platform.TimePattern)}";
+    }
+
     public static string Duration(double s)
     {
         if (s <= 0) return "";

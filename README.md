@@ -34,7 +34,7 @@ Want to try the newest changes before they're released? Every update is also bui
 
 **First start on a Mac:** ClipHarbor isn't signed with a paid Apple developer account, so macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to ClipHarbor. You only need to do this once.
 
-**On Linux** the "show a notice when downloads finish" option uses `notify-send`, and installing the converter uses `tar` with xz support. Both come with almost every desktop Linux.
+**On Linux** the "show a notice when downloads finish" option uses `notify-send`, installing the converter uses `tar` with xz support, and dates are shown in your local format with the `libicu` library. All three come with almost every desktop Linux.
 
 ## Download engine
 

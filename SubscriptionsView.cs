@@ -57,7 +57,7 @@ public class SubscriptionsView : DockPanel
                 if (g.DataContext is not Subscription s) return;
                 ((TextBlock)g.Children[0]).Text = s.Name.Length > 0 ? s.Name : s.Url;
                 ((TextBlock)g.Children[1]).Text = s.Options.Describe();
-                ((TextBlock)g.Children[2]).Text = s.LastChecked == default ? "Never" : s.LastChecked.ToString("MMM d, HH:mm");
+                ((TextBlock)g.Children[2]).Text = s.LastChecked == default ? "Never" : Fmt.When(s.LastChecked);
                 ((TextBlock)g.Children[3]).Text = s.LastResult;
             };
             return g;

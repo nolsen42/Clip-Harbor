@@ -200,7 +200,7 @@ public class RowView : Border
             {
                 ItemStatus.Queued => ("Waiting in line", "sub", Icons.Clock),
                 ItemStatus.Paused => ("Paused" + (it.Progress > 0 ? $" at {it.Progress * 100:0}%" : ""), "warn", Icons.Pause),
-                ItemStatus.Done => ("Downloaded  ·  " + it.Added.ToString("MMM d, HH:mm"), "good", Icons.Check),
+                ItemStatus.Done => ("Downloaded  ·  " + Fmt.When(it.Added), "good", Icons.Check),
                 ItemStatus.Canceled => ("Stopped", "sub", Icons.Close),
                 _ => ("Failed: " + it.Message, "bad", Icons.Alert),
             };
